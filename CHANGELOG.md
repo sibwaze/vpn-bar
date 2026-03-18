@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.2] - 2026-03-18
+
+### Fixed
+- Switched geolocation provider from HTTP to HTTPS to prevent IP address and location data from being transmitted in plain text
+- Fixed observer leak in AppDelegate — notification observers are now properly removed on app termination
+- Fixed VPN session statistics being lost when the app quits while a connection is active — duration is now recorded before shutdown
+- Fixed potential use-after-deallocation in StatusBarController by removing unnecessary async dispatch in deinit
+- Fixed double-cleanup crash risk in HotkeyManager when cleanup is called both from app termination and deinit
+- Fixed double observer removal in VPNManager by properly nullifying the observer token in deinit
+- Fixed VPN configuration loader silently returning empty results on recursive loading — it now reports a proper error
+- Added logging for unknown key codes to aid debugging when hotkey registration uses unexpected values
+
+### Changed
+- Removed unnecessary App Transport Security exception for ip-api.com since the new provider uses HTTPS
+- Removed redundant dirty-tracking flag in connection history that served no practical purpose
+
+---
+
 ## [0.8.1] - 2026-02-22
 
 ### Fixed

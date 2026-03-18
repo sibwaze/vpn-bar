@@ -72,6 +72,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        NotificationCenter.default.removeObserver(self)
+        StatisticsManager.shared.recordPendingSession()
         HotkeyManager.shared.cleanup()
         Task { @MainActor in
             VPNManager.shared.cleanup()

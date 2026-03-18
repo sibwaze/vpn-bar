@@ -43,7 +43,7 @@ enum AppConstants {
 
     /// Network info related constants.
     enum NetworkInfo {
-        static let geoIPURL = URL(string: "http://ip-api.com/json/?fields=status,country,countryCode,city,query")!
+        static let geoIPURL = URL(string: "https://ipwho.is/?fields=success,country,country_code,city,ip")!
         static let requestTimeout: TimeInterval = 10.0
     }
 

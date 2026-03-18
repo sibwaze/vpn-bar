@@ -29,7 +29,7 @@ final class VPNConfigurationLoader: VPNConfigurationLoaderProtocol {
         // Prevent infinite recursion
         guard !isLoadingAlternative else {
             Logger.vpn.warning("Preventing recursive call to loadConfigurationsAlternative")
-            completion(.success([]))
+            completion(.failure(.frameworkLoadFailed(reason: "Recursive configuration loading detected")))
             return
         }
 

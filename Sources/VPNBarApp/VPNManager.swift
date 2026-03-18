@@ -123,6 +123,7 @@ class VPNManager: VPNManagerProtocol {
         updateTimer = nil
         if let token = statusObserverToken {
             NotificationCenter.default.removeObserver(token)
+            statusObserverToken = nil
         }
     }
     

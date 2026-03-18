@@ -93,11 +93,11 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
     // MARK: - GeoIP
 
     private struct GeoIPResponse: Decodable {
-        let status: String?
+        let success: Bool?
         let country: String?
-        let countryCode: String?
+        let country_code: String?
         let city: String?
-        let query: String?
+        let ip: String?
     }
 
     private struct GeoInfo {
@@ -120,14 +120,14 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
             }
 
             let decoded = try JSONDecoder().decode(GeoIPResponse.self, from: data)
-            guard decoded.status == "success" else {
+            guard decoded.success == true else {
                 return nil
             }
 
             let geoInfo = GeoInfo(
-                ip: decoded.query,
+                ip: decoded.ip,
                 country: decoded.country,
-                countryCode: decoded.countryCode,
+                countryCode: decoded.country_code,
                 city: decoded.city
             )
             let hasAnyGeoData = geoInfo.ip != nil || geoInfo.country != nil || geoInfo.countryCode != nil || geoInfo.city != nil

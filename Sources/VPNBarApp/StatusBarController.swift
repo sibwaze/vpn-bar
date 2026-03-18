@@ -218,11 +218,8 @@ class StatusBarController {
     }
     
     deinit {
-        let timer = connectingAnimationTimer
+        connectingAnimationTimer?.invalidate()
         connectingAnimationTimer = nil
-        if let t = timer {
-            DispatchQueue.main.async { t.invalidate() }
-        }
     }
 
 }

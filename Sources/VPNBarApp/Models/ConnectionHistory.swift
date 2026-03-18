@@ -25,7 +25,6 @@ final class ConnectionHistoryManager {
     
     /// In-memory cache to avoid frequent UserDefaults I/O.
     private var cachedHistory: [ConnectionHistoryEntry]?
-    private var isDirty = false
     
     private init() {
         loadHistoryFromUserDefaults()
@@ -43,11 +42,10 @@ final class ConnectionHistoryManager {
     
     /// Saves history from cache to UserDefaults.
     private func saveHistoryToUserDefaults() {
-        guard isDirty, let history = cachedHistory else { return }
-        
+        guard let history = cachedHistory else { return }
+
         if let data = try? JSONEncoder().encode(history) {
             userDefaults.set(data, forKey: historyKey)
-            isDirty = false
         }
     }
     
@@ -97,16 +95,12 @@ final class ConnectionHistoryManager {
         }
         
         cachedHistory = history
-        isDirty = true
-        
-        // Save immediately for data persistence
         saveHistoryToUserDefaults()
     }
     
     /// Clears connection history.
     func clearHistory() {
         cachedHistory = []
-        isDirty = true
         userDefaults.removeObject(forKey: historyKey)
     }
 }

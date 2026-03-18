@@ -196,6 +196,7 @@ class HotkeyManager: HotkeyManagerProtocol {
     
     /// Explicitly cleans up all resources. Should be called when the application terminates.
     func cleanup() {
+        guard isValid else { return }
         Logger.hotkey.info("Cleaning up hotkey manager")
 
         isValid = false

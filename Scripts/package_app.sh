@@ -117,7 +117,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.8.1</string>
+    <string>0.8.2</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleLocalizations</key>
@@ -136,17 +136,6 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
     <string>VPNBarApp</string>
     <key>NSUserNotificationAlertStyle</key>
     <string>banner</string>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSExceptionDomains</key>
-        <dict>
-            <key>ip-api.com</key>
-            <dict>
-                <key>NSExceptionAllowsInsecureHTTPLoads</key>
-                <true/>
-            </dict>
-        </dict>
-    </dict>
 </dict>
 </plist>
 EOF

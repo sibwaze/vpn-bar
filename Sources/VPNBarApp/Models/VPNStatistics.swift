@@ -77,6 +77,12 @@ final class StatisticsManager {
         currentSessionStart = nil
     }
 
+    /// Flushes any in-progress session before shutdown.
+    func recordPendingSession() {
+        guard currentSessionStart != nil else { return }
+        recordDisconnection()
+    }
+
     /// Resets statistics.
     func resetStatistics() {
         cachedStatistics = VPNStatistics()

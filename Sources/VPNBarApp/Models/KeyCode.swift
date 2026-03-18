@@ -1,4 +1,5 @@
 import Carbon
+import os.log
 
 /// Key code constants for use in the application.
 enum KeyCode: UInt32 {
@@ -24,6 +25,7 @@ enum KeyCode: UInt32 {
         if let keyCode = KeyCode(rawValue: rawValue) {
             self = keyCode
         } else {
+            Logger.hotkey.warning("Unknown key code: \(rawValue), defaulting to .a")
             self = .a
         }
     }
