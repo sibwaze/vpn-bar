@@ -35,11 +35,6 @@ class VPNManager: VPNManagerProtocol {
     private var statusObserverToken: NSObjectProtocol?
     private var lastFullReload: Date = .distantPast
 
-    var updateInterval: TimeInterval {
-        get { SettingsManager.shared.updateInterval }
-        set { SettingsManager.shared.updateInterval = newValue }
-    }
-
     init(
         configurationLoader: VPNConfigurationLoaderProtocol? = nil,
         sessionManager: (any VPNSessionManagerProtocol)? = nil
@@ -289,7 +284,6 @@ class VPNManager: VPNManagerProtocol {
             processed.append(VPNConnection(
                 id: connection.id,
                 name: connection.name,
-                serviceID: connection.id,
                 status: convertToVPNStatus(from: sc)
             ))
         }

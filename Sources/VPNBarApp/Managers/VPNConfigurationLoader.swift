@@ -42,7 +42,6 @@ final class VPNConfigurationLoader: VPNConfigurationLoaderProtocol {
             result.append(VPNConnection(
                 id: serviceID,
                 name: name,
-                serviceID: serviceID,
                 status: .disconnected
             ))
         }

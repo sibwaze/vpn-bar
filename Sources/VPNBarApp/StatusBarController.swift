@@ -12,6 +12,9 @@ final class StatusBarController {
     private let vpnManager: VPNManager
     private let settingsManager: SettingsManager
 
+    /// Point size that reads well in the menu bar on modern macOS.
+    private static let symbolConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+
     init(
         vpnManager: VPNManager = .shared,
         settingsManager: SettingsManager = .shared
@@ -31,18 +34,28 @@ final class StatusBarController {
         button.target = self
         button.action = #selector(statusBarButtonClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        button.imagePosition = .imageOnly
+        button.setButtonType(.momentaryLight)
         button.setAccessibilityLabel(NSLocalizedString("status.accessibility.label", comment: ""))
         button.setAccessibilityHelp(NSLocalizedString("status.accessibility.help", comment: ""))
         button.setAccessibilityRole(.button)
     }
 
     private func bindVPNState() {
+        // Icon must follow both list membership and live session status.
         vpnManager.$connections
-            .sink { [weak self] _ in self?.applyIconState() }
+            .combineLatest(vpnManager.$hasActiveConnection)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _ in
+                self?.applyIconState()
+            }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: .showConnectionNameDidChange)
-            .sink { [weak self] _ in self?.applyIconState() }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.applyIconState()
+            }
             .store(in: &cancellables)
     }
 
@@ -50,19 +63,30 @@ final class StatusBarController {
         guard let button = statusItem?.button else { return }
         let connections = vpnManager.connections
 
-        let isBusy = connections.contains { $0.status == .connecting || $0.status == .disconnecting }
+        // Reset presentation so previous state never "sticks".
+        button.title = ""
+        button.attributedTitle = NSAttributedString(string: "")
+        button.contentTintColor = nil
+        button.alphaValue = 1.0
+        button.appearsDisabled = false
+
+        let isBusy = connections.contains {
+            $0.status == .connecting || $0.status == .disconnecting
+        }
         if isBusy {
-            button.image = Self.symbol("network")
-            button.title = ""
+            button.image = Self.templateSymbol("network")
             let tip = NSLocalizedString("status.tooltip.connecting", comment: "")
             button.toolTip = tip
             button.setAccessibilityValue(tip)
+            // Slightly dim while connecting/disconnecting.
+            button.alphaValue = 0.75
             return
         }
 
-        if let active = connections.first(where: { $0.status.isActive }) {
-            button.image = Self.symbol("network.badge.shield.half.filled")
-            button.title = ""
+        if let active = connections.first(where: { $0.status == .connected }) {
+            // Prefer shield glyph when available; fall back to network.
+            button.image = Self.templateSymbol("network.badge.shield.half.filled")
+                ?? Self.templateSymbol("network")
             if settingsManager.showConnectionName {
                 button.toolTip = active.name
                 button.setAccessibilityValue(String(
@@ -77,35 +101,32 @@ final class StatusBarController {
             return
         }
 
-        button.image = Self.disconnectedImage()
-        button.title = ""
+        // Disconnected: full-opacity template network icon, dimmed via alpha
+        // (custom redraw of SF Symbols often renders blank in the menu bar).
+        button.image = Self.templateSymbol("network")
+        button.alphaValue = 0.45
         let tip = NSLocalizedString("status.tooltip.disconnected", comment: "")
         button.toolTip = tip
         button.setAccessibilityValue(tip)
     }
 
-    private static func symbol(_ name: String) -> NSImage? {
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
-        image?.isTemplate = true
-        return image
-    }
-
-    private static var cachedDisconnected: NSImage?
-    private static func disconnectedImage() -> NSImage? {
-        if let cachedDisconnected { return cachedDisconnected }
-        guard let base = NSImage(systemSymbolName: "network", accessibilityDescription: nil) else { return nil }
-        let image = NSImage(size: base.size, flipped: false) { rect in
-            base.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.4)
-            return true
+    /// Creates a menu-bar-ready template SF Symbol (copy so callers can mutate safely).
+    private static func templateSymbol(_ name: String) -> NSImage? {
+        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil) else {
+            return nil
         }
+        let configured = base.withSymbolConfiguration(symbolConfig) ?? base
+        // Always return a copy: NSStatusBarButton may retain/mutate the image.
+        let image = configured.copy() as? NSImage ?? configured
         image.isTemplate = true
-        cachedDisconnected = image
+        image.size = NSSize(width: 18, height: 18)
         return image
     }
 
     @objc private func statusBarButtonClicked(_ sender: NSStatusBarButton) {
         let event = NSApp.currentEvent
-        if event?.type == .rightMouseUp || (event?.type == .leftMouseUp && event?.modifierFlags.contains(.control) == true) {
+        if event?.type == .rightMouseUp
+            || (event?.type == .leftMouseUp && event?.modifierFlags.contains(.control) == true) {
             MenuController.shared.showMenu(for: statusItem)
         } else if event?.type == .leftMouseUp {
             toggleVPNConnection()
@@ -119,7 +140,7 @@ final class StatusBarController {
         let wasActive = vpnManager.hasActiveConnection
         let target: (id: String, name: String)?
 
-        if let active = connections.first(where: { $0.status.isActive }) {
+        if let active = connections.first(where: { $0.status == .connected || $0.status == .connecting }) {
             target = (active.id, active.name)
         } else if let lastID = settingsManager.lastUsedConnectionID,
                   let last = connections.first(where: { $0.id == lastID }) {
