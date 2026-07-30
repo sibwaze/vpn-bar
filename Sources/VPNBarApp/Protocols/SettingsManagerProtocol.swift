@@ -3,7 +3,6 @@ import Foundation
 /// Protocol for managing application user settings.
 @MainActor
 protocol SettingsManagerProtocol {
-    var updateInterval: TimeInterval { get set }
     var hotkeyKeyCode: UInt32? { get set }
     var hotkeyModifiers: UInt32? { get set }
     var showNotifications: Bool { get set }

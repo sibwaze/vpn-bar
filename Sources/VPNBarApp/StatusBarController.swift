@@ -12,8 +12,8 @@ final class StatusBarController {
     private let vpnManager: VPNManager
     private let settingsManager: SettingsManager
 
-    /// Point size that reads well in the menu bar on modern macOS.
-    private static let symbolConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+    /// Match default menu-bar SF Symbol scale (avoid oversized glyphs).
+    private static let symbolConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
 
     init(
         vpnManager: VPNManager = .shared,
@@ -119,7 +119,8 @@ final class StatusBarController {
         // Always return a copy: NSStatusBarButton may retain/mutate the image.
         let image = configured.copy() as? NSImage ?? configured
         image.isTemplate = true
-        image.size = NSSize(width: 18, height: 18)
+        // Compact menu-bar footprint (same ballpark as system status items).
+        image.size = NSSize(width: 16, height: 16)
         return image
     }
 

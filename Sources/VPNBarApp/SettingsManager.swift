@@ -5,11 +5,10 @@ import os.log
 
 /// Manages application user settings.
 @MainActor
-class SettingsManager: SettingsManagerProtocol {
+final class SettingsManager: SettingsManagerProtocol {
     static let shared = SettingsManager()
 
     private let userDefaults: UserDefaults
-    private let updateIntervalKey = "updateInterval"
     private let hotkeyKeyCodeKey = "hotkeyKeyCode"
     private let hotkeyModifiersKey = "hotkeyModifiers"
     private let showNotificationsKey = "showNotifications"
@@ -23,18 +22,6 @@ class SettingsManager: SettingsManagerProtocol {
 
     init(userDefaults: UserDefaults) {
         self.userDefaults = userDefaults
-    }
-
-    var updateInterval: TimeInterval {
-        get {
-            let saved = userDefaults.double(forKey: updateIntervalKey)
-            return saved > 0 ? saved : AppConstants.defaultUpdateInterval
-        }
-        set {
-            let validated = min(max(newValue, AppConstants.minUpdateInterval), AppConstants.maxUpdateInterval)
-            userDefaults.set(validated, forKey: updateIntervalKey)
-            NotificationCenter.default.post(name: .updateIntervalDidChange, object: nil)
-        }
     }
 
     var hotkeyKeyCode: UInt32? {
