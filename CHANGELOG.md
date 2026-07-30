@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.3] - 2026-07-30
+
+### Fixed
+- Fixed VPN list and status failing on macOS 26/27 when `NEConfigurationManager` returns `IPC failed` (NEConfigurationErrorDomain code 11). The loader now falls back to SystemConfiguration (`SCNetworkServiceCopyAll`), which still enumerates VPN services with the same UUIDs used by `ne_session` / `scutil --nc`.
+
+---
+
 ## [0.8.2] - 2026-03-18
 
 ### Fixed
