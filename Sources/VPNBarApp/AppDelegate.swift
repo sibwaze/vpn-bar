@@ -4,19 +4,19 @@ import os.log
 /// Application delegate responsible for initialization and lifecycle management.
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
-    
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let logger = Logger(subsystem: AppConstants.bundleIdentifier, category: "AppDelegate")
-        logger.info("Application did finish launching")
-        
-        Task { @MainActor in
-            NotificationManager.shared.requestAuthorization()
-        }
-        
+        Logger(subsystem: AppConstants.bundleIdentifier, category: "AppDelegate")
+            .info("Application did finish launching")
+
         statusBarController = StatusBarController()
-        // VPNManager.init already loads connections once — avoid a duplicate SC/NE pass.
         registerHotkeyFromSettings()
-        registerConnectionHotkeysFromSettings()
+
+        if SettingsManager.shared.showNotifications {
+            Task { @MainActor in
+                NotificationManager.shared.requestAuthorization()
+            }
+        }
 
         NotificationCenter.default.addObserver(
             self,
@@ -24,26 +24,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: .hotkeyDidChange,
             object: nil
         )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(connectionHotkeysDidChange),
-            name: .connectionHotkeysDidChange,
-            object: nil
-        )
-    }
-    
-    @objc @MainActor private func hotkeyDidChange() {
-        registerHotkeyFromSettings()
     }
 
-    @objc @MainActor private func connectionHotkeysDidChange() {
-        registerConnectionHotkeysFromSettings()
+    @objc @MainActor private func hotkeyDidChange() {
+        registerHotkeyFromSettings()
     }
 
     @MainActor
     private func registerHotkeyFromSettings() {
         let settings = SettingsManager.shared
-        guard let keyCode = settings.hotkeyKeyCode, let modifiers = settings.hotkeyModifiers else { return }
+        guard let keyCode = settings.hotkeyKeyCode, let modifiers = settings.hotkeyModifiers else {
+            HotkeyManager.shared.unregisterHotkey()
+            return
+        }
 
         HotkeyManager.shared.registerHotkey(keyCode: keyCode, modifiers: modifiers) {
             Task { @MainActor in
@@ -52,25 +45,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @MainActor
-    private func registerConnectionHotkeysFromSettings() {
-        let settings = SettingsManager.shared
-        HotkeyManager.shared.unregisterAllConnectionHotkeys()
-
-        for hotkey in settings.connectionHotkeys {
-            let connectionID = hotkey.connectionID
-            HotkeyManager.shared.registerConnectionHotkey(
-                connectionID: connectionID,
-                keyCode: hotkey.keyCode,
-                modifiers: hotkey.modifiers
-            ) {
-                Task { @MainActor in
-                    VPNManager.shared.toggleConnection(connectionID)
-                }
-            }
-        }
-    }
-    
     func applicationWillTerminate(_ notification: Notification) {
         NotificationCenter.default.removeObserver(self)
         HotkeyManager.shared.cleanup()
@@ -80,9 +54,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             statusBarController?.cleanup()
         }
     }
-    
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return false
+        false
     }
 }
-

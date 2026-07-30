@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.6] - 2026-07-31
+
+### Removed / slimmed
+- Dead modules: connection history, usage statistics, sound feedback, per-connection hotkeys
+- Continuous status timer (event-driven status via `ne_session` only)
+- Snapshot-testing dependency and skip-only test targets
+- Unused protocols (`HotkeyManagerProtocol`, `NotificationManagerProtocol`), Comparable extension
+- Launch-time notification auth when notifications disabled
+
+### Changed
+- Smaller HotkeyManager / NotificationManager / VPNManager / SettingsManager
+- Menu still opens immediately; list reload throttled in background
+
+---
+
 ## [0.8.5] - 2026-07-31
 
 ### Fixed

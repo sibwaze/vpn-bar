@@ -1,5 +1,4 @@
 import AppKit
-import Carbon
 
 /// Status bar menu controller.
 @MainActor
@@ -124,12 +123,6 @@ class MenuController {
                 }
 
                 var title = connection.name
-
-                if let hotkey = SettingsManager.shared.connectionHotkey(for: connection.id) {
-                    let hotkeyStr = formatHotkeyForMenu(keyCode: hotkey.keyCode, modifiers: hotkey.modifiers)
-                    title += "  \(hotkeyStr)"
-                }
-
                 if connection.status != .disconnected {
                     title += " (\(connection.status.localizedDescription))"
                 }
@@ -281,20 +274,6 @@ class MenuController {
         guard let ip = sender.representedObject as? String else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(ip, forType: .string)
-    }
-
-    // MARK: - Hotkey Formatting
-
-    private func formatHotkeyForMenu(keyCode: UInt32, modifiers: UInt32) -> String {
-        var parts: [String] = []
-        if modifiers & UInt32(controlKey) != 0 { parts.append("⌃") }
-        if modifiers & UInt32(optionKey) != 0 { parts.append("⌥") }
-        if modifiers & UInt32(shiftKey) != 0 { parts.append("⇧") }
-        if modifiers & UInt32(cmdKey) != 0 { parts.append("⌘") }
-        if let keyStr = KeyCode(rawValue: keyCode)?.stringValue {
-            parts.append(keyStr)
-        }
-        return parts.joined()
     }
 
     // MARK: - Cached Image Helpers

@@ -165,26 +165,6 @@ final class GeneralSettingsView: NSView {
         )
         sectionStack.addArrangedSubview(description)
         
-        let soundCheckbox = NSButton(
-            checkboxWithTitle: NSLocalizedString(
-                "settings.notifications.soundFeedback",
-                comment: "Toggle to enable sound feedback"
-            ),
-            target: self,
-            action: #selector(soundFeedbackChanged(_:))
-        )
-        soundCheckbox.state = settingsManager.soundFeedbackEnabled ? .on : .off
-        soundCheckbox.font = NSFont.systemFont(ofSize: 13)
-        sectionStack.addArrangedSubview(soundCheckbox)
-        
-        let soundDescription = makeDescriptionLabel(
-            NSLocalizedString(
-                "settings.notifications.soundFeedbackDescription",
-                comment: "Description for sound feedback toggle"
-            )
-        )
-        sectionStack.addArrangedSubview(soundDescription)
-        
         return sectionStack
     }
     
@@ -286,7 +266,7 @@ final class GeneralSettingsView: NSView {
             return
         }
         
-        let validatedValue = text.clamped(to: AppConstants.minUpdateInterval...AppConstants.maxUpdateInterval)
+        let validatedValue = min(max(text, AppConstants.minUpdateInterval), AppConstants.maxUpdateInterval)
         if validatedValue != text {
             sender.stringValue = String(format: "%.0f", validatedValue)
         }
@@ -304,9 +284,6 @@ final class GeneralSettingsView: NSView {
         settingsManager.showNotifications = sender.state == .on
     }
     
-    @objc private func soundFeedbackChanged(_ sender: NSButton) {
-        settingsManager.soundFeedbackEnabled = sender.state == .on
-    }
     
     @objc private func showConnectionNameChanged(_ sender: NSButton) {
         settingsManager.showConnectionName = sender.state == .on

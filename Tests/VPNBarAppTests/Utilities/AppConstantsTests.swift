@@ -28,10 +28,6 @@ final class AppConstantsTests: XCTestCase {
         XCTAssertLessThanOrEqual(AppConstants.defaultUpdateInterval, AppConstants.maxUpdateInterval)
     }
     
-    func test_sessionStatusUpdateInterval_isPositive() {
-        XCTAssertGreaterThan(AppConstants.sessionStatusUpdateInterval, 0)
-    }
-    
     func test_minUpdateInterval_hasReasonableValue() {
         XCTAssertGreaterThanOrEqual(AppConstants.minUpdateInterval, 5.0)
     }

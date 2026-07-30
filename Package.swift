@@ -4,7 +4,6 @@ import PackageDescription
 let package = Package(
     name: "VPNBarApp",
     defaultLocalization: "en",
-    // Note: Minimum version is macOS 12, but some features require macOS 13+ (e.g., SMAppService)
     platforms: [
         .macOS(.v12)
     ],
@@ -14,9 +13,7 @@ let package = Package(
             targets: ["VPNBarApp"]
         )
     ],
-    dependencies: [
-        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.15.0")
-    ],
+    dependencies: [],
     targets: [
         .executableTarget(
             name: "VPNBarApp",
@@ -28,17 +25,8 @@ let package = Package(
         ),
         .testTarget(
             name: "VPNBarAppTests",
-            dependencies: [
-                "VPNBarApp",
-                .product(name: "SnapshotTesting", package: "swift-snapshot-testing")
-            ],
-            path: "Tests/VPNBarAppTests"
-        ),
-        .testTarget(
-            name: "VPNBarAppIntegrationTests",
             dependencies: ["VPNBarApp"],
-            path: "Tests/VPNBarAppIntegrationTests"
+            path: "Tests/VPNBarAppTests"
         )
     ]
 )
-

@@ -2,69 +2,29 @@ import Foundation
 
 /// Application-wide constants.
 enum AppConstants {
-    /// Default bundle identifier.
     static let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.borzov.VPNBar"
-    
-    /// Minimum status update interval in seconds.
-    static let minUpdateInterval: TimeInterval = 5.0
-    
-    /// Maximum status update interval in seconds.
-    static let maxUpdateInterval: TimeInterval = 120.0
-    
-    /// Default status update interval in seconds (status-only poll).
-    static let defaultUpdateInterval: TimeInterval = 20.0
-    
-    /// Session status update interval in seconds (legacy; status path uses updateInterval).
-    static let sessionStatusUpdateInterval: TimeInterval = 10.0
-    
-    /// Full VPN list reload interval in seconds (configs rarely change).
-    static let connectionsListReloadInterval: TimeInterval = 90.0
-    
-    /// Connection animation interval in seconds.
-    static let connectingAnimationInterval: TimeInterval = 0.4
-    
-    /// Default maximum number of connection attempts.
-    static let defaultRetryCount: Int = 3
-    
-    /// Base delay for exponential backoff between attempts in seconds.
-    static let retryBaseDelay: TimeInterval = 1.0
-    
-    /// Timeout for connection/disconnection operations in seconds.
-    static let connectionTimeout: TimeInterval = 30.0
-    
-    /// Delay before sending status change notification in seconds.
-    static let notificationDelay: TimeInterval = 0.5
-    
-    /// Network info cache duration in seconds.
-    static let networkInfoCacheDuration: TimeInterval = 60.0
 
-    /// Delay before refreshing network info after VPN status change in seconds.
+    static let minUpdateInterval: TimeInterval = 5.0
+    static let maxUpdateInterval: TimeInterval = 120.0
+    /// Kept for settings UI (legacy “refresh interval”); app is event-driven for status.
+    static let defaultUpdateInterval: TimeInterval = 30.0
+
+    static let connectingAnimationInterval: TimeInterval = 0.5
+    static let defaultRetryCount: Int = 2
+    static let retryBaseDelay: TimeInterval = 0.8
+    static let connectionTimeout: TimeInterval = 25.0
+    static let notificationDelay: TimeInterval = 0.4
+
+    static let networkInfoCacheDuration: TimeInterval = 90.0
     static let networkInfoRefreshDelay: TimeInterval = 1.0
 
-    /// Max time to wait for network info before showing the menu.
-    static let networkInfoMenuWaitTimeout: TimeInterval = 2.0
-
-    /// Network info related constants.
     enum NetworkInfo {
-        /// Last-resort GeoIP provider (often blocked); primary providers live in NetworkInfoManager.
         static let geoIPURL = URL(string: "https://ipwho.is/?fields=success,country,country_code,city,ip")
-        static let requestTimeout: TimeInterval = 4.0
+        static let requestTimeout: TimeInterval = 3.5
     }
 
-    /// URLs used in the application.
     enum URLs {
-        static let repository: URL = {
-            guard let url = URL(string: "https://github.com/borzov/vpn-bar") else {
-                fatalError("Invalid repository URL")
-            }
-            return url
-        }()
-        static let networkPreferences: URL = {
-            guard let url = URL(string: "x-apple.systempreferences:com.apple.Network-Settings.extension") else {
-                fatalError("Invalid network preferences URL")
-            }
-            return url
-        }()
+        static let repository = URL(string: "https://github.com/borzov/vpn-bar")!
+        static let networkPreferences = URL(string: "x-apple.systempreferences:com.apple.Network-Settings.extension")!
     }
 }
-
