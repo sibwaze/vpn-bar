@@ -190,20 +190,15 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
     }
 
     private func fetchGeoIPWithFallbacks() async -> GeoInfo? {
-        // Order: endpoints known to work through restrictive networks first.
-        let providers: [() async -> GeoInfo?] = [
-            { await self.fetchIfconfigCo() },
-            { await self.fetchCloudflareTrace() },
-            { await self.fetchIpwhoIs() }
-        ]
-
-        for provider in providers {
-            if Task.isCancelled { return nil }
-            if let info = await provider(), info.ip != nil || info.country != nil {
-                return info
-            }
+        // Primary + one fallback (ipwho.is often blocked).
+        if let info = await fetchIfconfigCo(), info.ip != nil || info.country != nil {
+            return info
         }
-        Logger.vpn.warning("All GeoIP providers failed")
+        if Task.isCancelled { return nil }
+        if let info = await fetchCloudflareTrace(), info.ip != nil || info.country != nil {
+            return info
+        }
+        Logger.vpn.warning("GeoIP providers failed")
         return nil
     }
 
@@ -263,30 +258,6 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
         }
         guard ip != nil || loc != nil else { return nil }
         return GeoInfo(ip: ip, country: loc, countryCode: loc, city: nil)
-    }
-
-    /// Legacy provider (often blocked); kept as last resort.
-    private func fetchIpwhoIs() async -> GeoInfo? {
-        guard let url = AppConstants.NetworkInfo.geoIPURL,
-              let data = await data(for: url) else { return nil }
-
-        struct Response: Decodable {
-            let success: Bool?
-            let country: String?
-            let country_code: String?
-            let city: String?
-            let ip: String?
-        }
-        guard let decoded = try? JSONDecoder().decode(Response.self, from: data),
-              decoded.success == true else { return nil }
-
-        let info = GeoInfo(
-            ip: decoded.ip,
-            country: decoded.country,
-            countryCode: decoded.country_code,
-            city: decoded.city
-        )
-        return (info.ip != nil || info.country != nil) ? info : nil
     }
 
     // MARK: - VPN Interface Detection

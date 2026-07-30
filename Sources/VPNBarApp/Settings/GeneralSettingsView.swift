@@ -1,16 +1,15 @@
 import AppKit
 
-/// General settings view component.
+/// General settings: startup, notifications, display.
 @MainActor
 final class GeneralSettingsView: NSView {
     private var settingsManager: SettingsManagerProtocol
     private let vpnManager: VPNManagerProtocol
-    
-    var updateIntervalTextField: NSTextField?
+
     var showNotificationsCheckbox: NSButton?
     var showConnectionNameCheckbox: NSButton?
     var launchAtLoginCheckbox: NSButton?
-    
+
     init(
         settingsManager: SettingsManagerProtocol,
         vpnManager: VPNManagerProtocol,
@@ -19,41 +18,33 @@ final class GeneralSettingsView: NSView {
         self.settingsManager = settingsManager
         self.vpnManager = vpnManager
         super.init(frame: frame)
+        _ = vpnManager
         setupView()
     }
-    
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func syncUI() {
+        showNotificationsCheckbox?.state = settingsManager.showNotifications ? .on : .off
+        showConnectionNameCheckbox?.state = settingsManager.showConnectionName ? .on : .off
+        launchAtLoginCheckbox?.state = settingsManager.launchAtLogin ? .on : .off
     }
-    
+
     private func setupView() {
         translatesAutoresizingMaskIntoConstraints = false
-        
         let mainStack = NSStackView()
         mainStack.orientation = .vertical
         mainStack.alignment = .leading
-        mainStack.distribution = .fill
         mainStack.spacing = 12
         mainStack.translatesAutoresizingMaskIntoConstraints = false
-        
-        let startupSection = createStartupSection()
-        mainStack.addArrangedSubview(startupSection)
+
+        mainStack.addArrangedSubview(createStartupSection())
         mainStack.addArrangedSubview(makeDivider())
-        
-        let intervalSection = createIntervalSection()
-        mainStack.addArrangedSubview(intervalSection)
+        mainStack.addArrangedSubview(createNotificationsSection())
         mainStack.addArrangedSubview(makeDivider())
-        
-        let notificationsSection = createNotificationsSection()
-        mainStack.addArrangedSubview(notificationsSection)
-        mainStack.addArrangedSubview(makeDivider())
-        
-        let displaySection = createDisplaySection()
-        mainStack.addArrangedSubview(displaySection)
-        mainStack.addArrangedSubview(makeDivider())
-        
+        mainStack.addArrangedSubview(createDisplaySection())
+
         addSubview(mainStack)
-        
         NSLayoutConstraint.activate([
             mainStack.topAnchor.constraint(equalTo: topAnchor, constant: 16),
             mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
@@ -62,248 +53,81 @@ final class GeneralSettingsView: NSView {
             widthAnchor.constraint(equalToConstant: 556)
         ])
     }
-    
-    private func createIntervalSection() -> NSView {
-        let sectionStack = NSStackView()
-        sectionStack.orientation = .vertical
-        sectionStack.alignment = .leading
-        sectionStack.distribution = .fill
-        sectionStack.spacing = 6
-        
-        let sectionLabel = makeSectionLabel(
-            NSLocalizedString(
-                "settings.status.title",
-                comment: "Status update section title"
-            )
-        )
-        sectionStack.addArrangedSubview(sectionLabel)
-        
-        let inputStack = NSStackView()
-        inputStack.orientation = .horizontal
-        inputStack.alignment = .centerY
-        inputStack.distribution = .fill
-        inputStack.spacing = 6
-        
-        let textField = NSTextField()
-        textField.stringValue = String(format: "%.0f", settingsManager.updateInterval)
-        textField.font = NSFont.systemFont(ofSize: 13)
-        textField.alignment = .right
-        textField.target = self
-        textField.action = #selector(updateIntervalChanged(_:))
-        textField.widthAnchor.constraint(equalToConstant: 60).isActive = true
-        self.updateIntervalTextField = textField
-        inputStack.addArrangedSubview(textField)
 
-        let stepper = NSStepper()
-        stepper.minValue = AppConstants.minUpdateInterval
-        stepper.maxValue = AppConstants.maxUpdateInterval
-        stepper.increment = 1
-        stepper.integerValue = Int(settingsManager.updateInterval)
-        stepper.target = self
-        stepper.action = #selector(updateIntervalChangedStepper(_:))
-        inputStack.addArrangedSubview(stepper)
-        
-        let secondsLabel = NSTextField(
-            labelWithString: NSLocalizedString(
-                "settings.status.seconds",
-                comment: "Label for seconds unit"
-            )
-        )
-        secondsLabel.font = NSFont.systemFont(ofSize: 13)
-        inputStack.addArrangedSubview(secondsLabel)
-        
-        let spacer = NSView()
-        spacer.widthAnchor.constraint(equalToConstant: 1).isActive = true
-        inputStack.addArrangedSubview(spacer)
-        
-        sectionStack.addArrangedSubview(inputStack)
-        
-        let description = makeDescriptionLabel(
-            NSLocalizedString(
-                "settings.status.description",
-                comment: "Description for status update interval"
-            )
-        )
-        sectionStack.addArrangedSubview(description)
-        
-        return sectionStack
-    }
-    
     private func createNotificationsSection() -> NSView {
-        let sectionStack = NSStackView()
-        sectionStack.orientation = .vertical
-        sectionStack.alignment = .leading
-        sectionStack.distribution = .fill
-        sectionStack.spacing = 6
-        
-        let sectionLabel = makeSectionLabel(
-            NSLocalizedString(
-                "settings.notifications.title",
-                comment: "Notifications section title"
-            )
-        )
-        sectionStack.addArrangedSubview(sectionLabel)
-        
+        let section = sectionStack(titleKey: "settings.notifications.title")
         let checkbox = NSButton(
-            checkboxWithTitle: NSLocalizedString(
-                "settings.notifications.toggle",
-                comment: "Toggle to show notifications on connect/disconnect"
-            ),
+            checkboxWithTitle: NSLocalizedString("settings.notifications.toggle", comment: ""),
             target: self,
             action: #selector(showNotificationsChanged(_:))
         )
         checkbox.state = settingsManager.showNotifications ? .on : .off
-        checkbox.font = NSFont.systemFont(ofSize: 13)
-        self.showNotificationsCheckbox = checkbox
-        sectionStack.addArrangedSubview(checkbox)
-        
-        let description = makeDescriptionLabel(
-            NSLocalizedString(
-                "settings.notifications.description",
-                comment: "Description for notifications toggle"
-            )
-        )
-        sectionStack.addArrangedSubview(description)
-        
-        return sectionStack
+        checkbox.font = .systemFont(ofSize: 13)
+        showNotificationsCheckbox = checkbox
+        section.addArrangedSubview(checkbox)
+        section.addArrangedSubview(descriptionLabel("settings.notifications.description"))
+        return section
     }
-    
+
     private func createDisplaySection() -> NSView {
-        let sectionStack = NSStackView()
-        sectionStack.orientation = .vertical
-        sectionStack.alignment = .leading
-        sectionStack.distribution = .fill
-        sectionStack.spacing = 6
-        
-        let sectionLabel = makeSectionLabel(
-            NSLocalizedString(
-                "settings.display.title",
-                comment: "Display section title"
-            )
-        )
-        sectionStack.addArrangedSubview(sectionLabel)
-        
+        let section = sectionStack(titleKey: "settings.display.title")
         let checkbox = NSButton(
-            checkboxWithTitle: NSLocalizedString(
-                "settings.display.showName",
-                comment: "Toggle to show connection name in tooltip"
-            ),
+            checkboxWithTitle: NSLocalizedString("settings.display.showName", comment: ""),
             target: self,
             action: #selector(showConnectionNameChanged(_:))
         )
         checkbox.state = settingsManager.showConnectionName ? .on : .off
-        checkbox.font = NSFont.systemFont(ofSize: 13)
-        self.showConnectionNameCheckbox = checkbox
-        sectionStack.addArrangedSubview(checkbox)
-        
-        let description = makeDescriptionLabel(
-            NSLocalizedString(
-                "settings.display.description",
-                comment: "Description for showing connection name"
-            )
-        )
-        sectionStack.addArrangedSubview(description)
-        
-        return sectionStack
+        checkbox.font = .systemFont(ofSize: 13)
+        showConnectionNameCheckbox = checkbox
+        section.addArrangedSubview(checkbox)
+        section.addArrangedSubview(descriptionLabel("settings.display.description"))
+        return section
     }
-    
+
     private func createStartupSection() -> NSView {
-        let sectionStack = NSStackView()
-        sectionStack.orientation = .vertical
-        sectionStack.alignment = .leading
-        sectionStack.distribution = .fill
-        sectionStack.spacing = 6
-        
-        let sectionLabel = makeSectionLabel(
-            NSLocalizedString(
-                "settings.startup.title",
-                comment: "Startup section title"
-            )
-        )
-        sectionStack.addArrangedSubview(sectionLabel)
-        
+        let section = sectionStack(titleKey: "settings.startup.title")
         let checkbox = NSButton(
-            checkboxWithTitle: NSLocalizedString(
-                "settings.startup.launchAtLogin",
-                comment: "Toggle to launch app at login"
-            ),
+            checkboxWithTitle: NSLocalizedString("settings.startup.launchAtLogin", comment: ""),
             target: self,
             action: #selector(launchAtLoginChanged(_:))
         )
         checkbox.state = settingsManager.launchAtLogin ? .on : .off
-        checkbox.font = NSFont.systemFont(ofSize: 13)
-        
+        checkbox.font = .systemFont(ofSize: 13)
+        checkbox.isEnabled = settingsManager.isLaunchAtLoginAvailable
+        launchAtLoginCheckbox = checkbox
+        section.addArrangedSubview(checkbox)
+
+        var text = NSLocalizedString("settings.startup.description", comment: "")
         if !settingsManager.isLaunchAtLoginAvailable {
-            checkbox.isEnabled = false
+            text += " " + NSLocalizedString("settings.startup.requires13", comment: "")
         }
-        
-        self.launchAtLoginCheckbox = checkbox
-        sectionStack.addArrangedSubview(checkbox)
-        
-        var descriptionText = NSLocalizedString(
-            "settings.startup.description",
-            comment: "Description for launch at login toggle"
-        )
-        if !settingsManager.isLaunchAtLoginAvailable {
-            descriptionText += " " + NSLocalizedString(
-                "settings.startup.requires13",
-                comment: "Note about macOS version requirement"
-            )
-        }
-        
-        let description = NSTextField(wrappingLabelWithString: descriptionText)
-        description.font = NSFont.systemFont(ofSize: 11)
-        description.textColor = .secondaryLabelColor
-        description.preferredMaxLayoutWidth = 524
-        sectionStack.addArrangedSubview(description)
-        
-        return sectionStack
+        let desc = NSTextField(wrappingLabelWithString: text)
+        desc.font = .systemFont(ofSize: 11)
+        desc.textColor = .secondaryLabelColor
+        desc.preferredMaxLayoutWidth = 524
+        section.addArrangedSubview(desc)
+        return section
     }
-    
-    @objc private func updateIntervalChanged(_ sender: NSTextField) {
-        guard let text = Double(sender.stringValue.trimmingCharacters(in: .whitespaces)) else {
-            sender.stringValue = String(format: "%.0f", settingsManager.updateInterval)
-            return
-        }
-        
-        let validatedValue = min(max(text, AppConstants.minUpdateInterval), AppConstants.maxUpdateInterval)
-        if validatedValue != text {
-            sender.stringValue = String(format: "%.0f", validatedValue)
-        }
-        
-        vpnManager.updateInterval = validatedValue
+
+    private func sectionStack(titleKey: String) -> NSStackView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        let label = NSTextField(labelWithString: NSLocalizedString(titleKey, comment: ""))
+        label.font = .boldSystemFont(ofSize: 13)
+        stack.addArrangedSubview(label)
+        return stack
     }
-    
-    @objc private func updateIntervalChangedStepper(_ sender: NSStepper) {
-        let value = sender.integerValue
-        updateIntervalTextField?.stringValue = "\(value)"
-        updateIntervalChanged(updateIntervalTextField ?? NSTextField(string: "\(value)"))
+
+    private func descriptionLabel(_ key: String) -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: NSLocalizedString(key, comment: ""))
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabelColor
+        label.preferredMaxLayoutWidth = 524
+        return label
     }
-    
-    @objc private func showNotificationsChanged(_ sender: NSButton) {
-        settingsManager.showNotifications = sender.state == .on
-    }
-    
-    
-    @objc private func showConnectionNameChanged(_ sender: NSButton) {
-        settingsManager.showConnectionName = sender.state == .on
-    }
-    
-    @objc private func launchAtLoginChanged(_ sender: NSButton) {
-        settingsManager.launchAtLogin = sender.state == .on
-    }
-    
-    func updateIntervalDidChange() {
-        updateIntervalTextField?.stringValue = String(format: "%.0f", settingsManager.updateInterval)
-    }
-    
-    func syncUI() {
-        updateIntervalTextField?.stringValue = String(format: "%.0f", settingsManager.updateInterval)
-        showNotificationsCheckbox?.state = settingsManager.showNotifications ? .on : .off
-        showConnectionNameCheckbox?.state = settingsManager.showConnectionName ? .on : .off
-        launchAtLoginCheckbox?.state = settingsManager.launchAtLogin ? .on : .off
-    }
-    
+
     private func makeDivider() -> NSView {
         let box = NSBox()
         box.boxType = .separator
@@ -311,18 +135,16 @@ final class GeneralSettingsView: NSView {
         box.heightAnchor.constraint(equalToConstant: 1).isActive = true
         return box
     }
-    
-    private func makeSectionLabel(_ text: String) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        return label
+
+    @objc private func showNotificationsChanged(_ sender: NSButton) {
+        settingsManager.showNotifications = sender.state == .on
     }
-    
-    private func makeDescriptionLabel(_ text: String) -> NSTextField {
-        let label = NSTextField(wrappingLabelWithString: text)
-        label.font = NSFont.systemFont(ofSize: 11)
-        label.textColor = .secondaryLabelColor
-        label.preferredMaxLayoutWidth = 524
-        return label
+
+    @objc private func showConnectionNameChanged(_ sender: NSButton) {
+        settingsManager.showConnectionName = sender.state == .on
+    }
+
+    @objc private func launchAtLoginChanged(_ sender: NSButton) {
+        settingsManager.launchAtLogin = sender.state == .on
     }
 }

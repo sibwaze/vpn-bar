@@ -2,227 +2,153 @@ import AppKit
 import Combine
 import os.log
 
-/// Manages status bar item and its visual state.
+/// Menu bar icon, clicks, and connection toggle.
 @MainActor
-class StatusBarController {
+final class StatusBarController {
     static var shared: StatusBarController?
-    
+
     private var statusItem: NSStatusItem?
-    private let viewModel: StatusItemViewModel
-    private var lastContent: StatusItemViewModel.ImageContent?
     private var cancellables = Set<AnyCancellable>()
-    private let vpnManager: VPNManagerProtocol
-    private let settingsManager: SettingsManagerProtocol
-    
-    private var connectingAnimationTimer: Timer?
-    private var animationFrame = 0
-    
+    private let vpnManager: VPNManager
+    private let settingsManager: SettingsManager
+
     init(
-        vpnManager: VPNManagerProtocol = VPNManager.shared,
-        settingsManager: SettingsManagerProtocol = SettingsManager.shared
+        vpnManager: VPNManager = .shared,
+        settingsManager: SettingsManager = .shared
     ) {
         self.vpnManager = vpnManager
         self.settingsManager = settingsManager
-        viewModel = StatusItemViewModel(
-            vpnManager: vpnManager,
-            settings: settingsManager
-        )
         StatusBarController.shared = self
         setupStatusBar()
-        bindViewModel()
+        bindVPNState()
+        applyIconState()
     }
-    
+
     private func setupStatusBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
-        guard let statusItem = statusItem else { return }
-        
-        if let button = statusItem.button {
-            button.target = self
-            button.action = #selector(statusBarButtonClicked(_:))
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            
-            button.setAccessibilityLabel(
-                NSLocalizedString(
-                    "status.accessibility.label",
-                    comment: "Accessibility label for the status bar button"
-                )
-            )
-            button.setAccessibilityHelp(
-                NSLocalizedString(
-                    "status.accessibility.help",
-                    comment: "Accessibility help text for the status bar button"
-                )
-            )
-            button.setAccessibilityRole(.button)
-        }
+        guard let button = statusItem?.button else { return }
+
+        button.target = self
+        button.action = #selector(statusBarButtonClicked(_:))
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        button.setAccessibilityLabel(NSLocalizedString("status.accessibility.label", comment: ""))
+        button.setAccessibilityHelp(NSLocalizedString("status.accessibility.help", comment: ""))
+        button.setAccessibilityRole(.button)
     }
-    
-    private func bindViewModel() {
-        viewModel.$state
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
-                guard let self else { return }
-                switch state {
-                case .connecting(let content):
-                    self.lastContent = content
-                    self.applyTooltip(from: content)
-                    self.startConnectingAnimation()
-                case .connected(let content):
-                    self.stopConnectingAnimation()
-                    self.applyContent(content)
-                case .disconnected(let content):
-                    self.stopConnectingAnimation()
-                    self.applyContent(content)
-                }
-            }
+
+    private func bindVPNState() {
+        vpnManager.$connections
+            .sink { [weak self] _ in self?.applyIconState() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .showConnectionNameDidChange)
+            .sink { [weak self] _ in self?.applyIconState() }
             .store(in: &cancellables)
     }
-    
-    private func startConnectingAnimation() {
-        guard connectingAnimationTimer == nil else { return }
-        
-        animationFrame = 0
-        let timer = Timer.scheduledTimer(withTimeInterval: AppConstants.connectingAnimationInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.animateConnectingIcon()
-            }
-        }
-        connectingAnimationTimer = timer
-        RunLoop.current.add(timer, forMode: .common)
-        
-        animateConnectingIcon()
-    }
-    
-    private func stopConnectingAnimation() {
-        connectingAnimationTimer?.invalidate()
-        connectingAnimationTimer = nil
-        animationFrame = 0
-        if let content = lastContent {
-            applyContent(content)
-        }
-    }
-    
-    private func animateConnectingIcon() {
-        guard let button = statusItem?.button else { return }
-        
-        let symbols = [
-            "network",
-            "network.badge.shield.half.filled"
-        ]
-        
-        let symbolName = symbols[animationFrame % symbols.count]
-        
-        if let image = ImageCache.shared.image(systemSymbolName: symbolName) {
-            button.image = image
-            button.contentTintColor = nil
-        } else {
-            button.title = animationFrame % 2 == 0 ? "🔓" : "🔒"
-            button.contentTintColor = nil
-        }
-        
-        animationFrame += 1
-    }
-    
-    private func applyContent(_ content: StatusItemViewModel.ImageContent) {
-        guard let button = statusItem?.button else { return }
-        lastContent = content
 
-        if let image = content.image {
-            button.image = image
+    private func applyIconState() {
+        guard let button = statusItem?.button else { return }
+        let connections = vpnManager.connections
+
+        let isBusy = connections.contains { $0.status == .connecting || $0.status == .disconnecting }
+        if isBusy {
+            button.image = Self.symbol("network")
             button.title = ""
-            button.attributedTitle = NSAttributedString(string: "")
-            button.contentTintColor = nil
+            let tip = NSLocalizedString("status.tooltip.connecting", comment: "")
+            button.toolTip = tip
+            button.setAccessibilityValue(tip)
+            return
         }
 
-        applyTooltip(from: content)
+        if let active = connections.first(where: { $0.status.isActive }) {
+            button.image = Self.symbol("network.badge.shield.half.filled")
+            button.title = ""
+            if settingsManager.showConnectionName {
+                button.toolTip = active.name
+                button.setAccessibilityValue(String(
+                    format: NSLocalizedString("status.tooltip.connectedTo", comment: ""),
+                    active.name
+                ))
+            } else {
+                let tip = NSLocalizedString("status.tooltip.connected", comment: "")
+                button.toolTip = tip
+                button.setAccessibilityValue(tip)
+            }
+            return
+        }
+
+        button.image = Self.disconnectedImage()
+        button.title = ""
+        let tip = NSLocalizedString("status.tooltip.disconnected", comment: "")
+        button.toolTip = tip
+        button.setAccessibilityValue(tip)
     }
 
-    private func applyTooltip(from content: StatusItemViewModel.ImageContent) {
-        guard let button = statusItem?.button else { return }
-        button.toolTip = content.toolTip
-        button.setAccessibilityValue(content.accessibilityValue)
+    private static func symbol(_ name: String) -> NSImage? {
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+        image?.isTemplate = true
+        return image
     }
-    
+
+    private static var cachedDisconnected: NSImage?
+    private static func disconnectedImage() -> NSImage? {
+        if let cachedDisconnected { return cachedDisconnected }
+        guard let base = NSImage(systemSymbolName: "network", accessibilityDescription: nil) else { return nil }
+        let image = NSImage(size: base.size, flipped: false) { rect in
+            base.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.4)
+            return true
+        }
+        image.isTemplate = true
+        cachedDisconnected = image
+        return image
+    }
+
     @objc private func statusBarButtonClicked(_ sender: NSStatusBarButton) {
         let event = NSApp.currentEvent
-        
         if event?.type == .rightMouseUp || (event?.type == .leftMouseUp && event?.modifierFlags.contains(.control) == true) {
             MenuController.shared.showMenu(for: statusItem)
         } else if event?.type == .leftMouseUp {
             toggleVPNConnection()
         }
     }
-    
-    /// Toggles current VPN connection and sends notification if needed.
+
     func toggleVPNConnection() {
         let connections = vpnManager.connections
-        
-        // Early return if no connections available
-        guard !connections.isEmpty else {
-            Logger.vpn.warning("No VPN connections available to toggle")
-            return
-        }
-        
+        guard !connections.isEmpty else { return }
+
         let wasActive = vpnManager.hasActiveConnection
-        var connectionName: String?
-        var targetConnectionID: String?
-        
-        // Prefer the currently active tunnel so left-click never tears down B to start A.
-        if let activeConnection = connections.first(where: { $0.status.isActive }) {
-            targetConnectionID = activeConnection.id
-            connectionName = activeConnection.name
-        } else if let lastUsedID = settingsManager.lastUsedConnectionID,
-                  let lastUsedConnection = connections.first(where: { $0.id == lastUsedID }) {
-            targetConnectionID = lastUsedID
-            connectionName = lastUsedConnection.name
+        let target: (id: String, name: String)?
+
+        if let active = connections.first(where: { $0.status.isActive }) {
+            target = (active.id, active.name)
+        } else if let lastID = settingsManager.lastUsedConnectionID,
+                  let last = connections.first(where: { $0.id == lastID }) {
+            target = (last.id, last.name)
         } else if connections.count == 1, let only = connections.first {
-            targetConnectionID = only.id
-            connectionName = only.name
-        } else if connections.count > 1 {
-            // Ambiguous: open menu instead of guessing which VPN to start.
+            target = (only.id, only.name)
+        } else {
             MenuController.shared.showMenu(for: statusItem)
             return
         }
-        
-        guard let connectionID = targetConnectionID else {
-            Logger.vpn.error("Failed to determine target connection ID")
-            return
-        }
-        
-        vpnManager.toggleConnection(connectionID)
-        
+
+        guard let target else { return }
+        vpnManager.toggleConnection(target.id)
+
         if settingsManager.showNotifications {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: UInt64(AppConstants.notificationDelay * 1_000_000_000))
-                guard !Task.isCancelled else { return }
-                
-                let isNowActive = self.vpnManager.hasActiveConnection
-                if wasActive != isNowActive {
-                    self.notifyStatusChange(isNowActive: isNowActive, connectionName: connectionName)
+                let nowActive = self.vpnManager.hasActiveConnection
+                if wasActive != nowActive {
+                    NotificationManager.shared.sendVPNNotification(
+                        isConnected: nowActive,
+                        connectionName: target.name
+                    )
                 }
             }
         }
     }
-    
-    /// Sends system notification about status change.
-    private func notifyStatusChange(isNowActive: Bool, connectionName: String?) {
-        Task { @MainActor in
-            NotificationManager.shared.sendVPNNotification(
-                isConnected: isNowActive,
-                connectionName: connectionName
-            )
-        }
-    }
-    
-    /// Cleans up resources. Should be called before deallocation.
-    func cleanup() {
-        stopConnectingAnimation()
-    }
-    
-    deinit {
-        connectingAnimationTimer?.invalidate()
-        connectingAnimationTimer = nil
-    }
 
+    func cleanup() {
+        cancellables.removeAll()
+    }
 }

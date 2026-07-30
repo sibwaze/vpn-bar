@@ -162,7 +162,6 @@ class MenuController {
     @objc func vpnConnectionToggled(_ sender: NSMenuItem) {
         guard let connectionID = sender.representedObject as? String else { return }
         vpnManager.toggleConnection(connectionID)
-        scheduleMenuUpdate()
     }
     
     @objc private func showSettings(_ sender: NSMenuItem) {
@@ -171,14 +170,6 @@ class MenuController {
     
     @objc private func quitApplication(_ sender: NSMenuItem) {
         NSApplication.shared.terminate(nil)
-    }
-
-    private func scheduleMenuUpdate() {
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: UInt64(AppConstants.notificationDelay * 1_000_000_000))
-            guard !Task.isCancelled else { return }
-            self.updateMenu()
-        }
     }
     
     @objc private func openNetworkPreferences(_ sender: NSMenuItem) {
@@ -279,14 +270,20 @@ class MenuController {
     // MARK: - Cached Image Helpers
     
     private static func activeImage() -> NSImage? {
-        return ImageCache.shared.image(systemSymbolName: "checkmark.circle.fill")
+        symbol("checkmark.circle.fill")
     }
-    
+
     private static func inactiveImage() -> NSImage? {
-        return ImageCache.shared.image(systemSymbolName: "circle")
+        symbol("circle")
     }
-    
+
     private static func errorImage() -> NSImage? {
-        return ImageCache.shared.image(systemSymbolName: "exclamationmark.triangle")
+        symbol("exclamationmark.triangle")
+    }
+
+    private static func symbol(_ name: String) -> NSImage? {
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+        image?.isTemplate = true
+        return image
     }
 }

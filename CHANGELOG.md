@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.7] - 2026-07-31
+
+### Refactor / slim
+- Merged `StatusItemViewModel` into `StatusBarController` (no fallback poll timer, no connecting animation timer)
+- Removed `ImageCache`; SF Symbols created inline
+- `VPNConfigurationLoader` is SC-only (dropped private NEConfigurationManager path)
+- GeoIP: two providers only (ifconfig.co → Cloudflare)
+- Settings window built lazily; dropped dead “update interval” UI; thinner hotkey settings
+- Removed post-toggle menu rebuild delay
+
+---
+
 ## [0.8.6] - 2026-07-31
 
 ### Removed / slimmed
