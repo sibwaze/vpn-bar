@@ -1,6 +1,5 @@
 import AppKit
 import Carbon
-import Combine
 
 /// Status bar menu controller.
 @MainActor
@@ -11,28 +10,45 @@ class MenuController {
 
     private var menu: NSMenu?
     private var statusItem: NSStatusItem?
-    private var cancellables = Set<AnyCancellable>()
     private let vpnManager: VPNManagerProtocol
 
     private let networkInfoManager: NetworkInfoManagerProtocol
+    private var showMenuTask: Task<Void, Never>?
 
     init(vpnManager: VPNManagerProtocol, networkInfoManager: NetworkInfoManagerProtocol? = nil) {
         self.vpnManager = vpnManager
         self.networkInfoManager = networkInfoManager ?? NetworkInfoManager.shared
-        observeConnections()
+        // Menu is built only when shown — no continuous rebuild on $connections.
     }
 
     /// Shows menu for the specified status bar item.
     /// - Parameter statusItem: Status bar item for which to build the menu.
     func showMenu(for statusItem: NSStatusItem?) {
         self.statusItem = statusItem
-        networkInfoManager.refresh(force: false)
-        buildMenu()
-        
+        showMenuTask?.cancel()
+        showMenuTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Await full list reload so deleted VPNs are gone before the menu appears.
+            if let manager = self.vpnManager as? VPNManager {
+                await manager.reloadConnectionsAsync()
+            } else {
+                self.vpnManager.loadConnections(forceReload: true)
+            }
+            guard !Task.isCancelled else { return }
+
+            if self.vpnManager.hasActiveConnection {
+                self.networkInfoManager.refresh(force: false)
+            }
+            self.buildMenu()
+            self.popUpMenu()
+        }
+    }
+
+    private func popUpMenu() {
         guard let statusItem = statusItem,
               let button = statusItem.button,
               let window = button.window else { return }
-        
+
         let buttonFrame = button.convert(button.bounds, to: nil)
         let pointInWindow = button.superview?.convert(buttonFrame.origin, to: nil) ?? buttonFrame.origin
         let screenPoint = window.convertPoint(toScreen: NSPoint(x: pointInWindow.x, y: pointInWindow.y + buttonFrame.height))
@@ -40,7 +56,7 @@ class MenuController {
         menu?.popUp(positioning: nil, at: screenPoint, in: nil)
     }
     
-    /// Rebuilds menu with current data.
+    /// Rebuilds menu with current data (only useful while testing or after an action).
     func updateMenu() {
         buildMenu()
     }
@@ -173,28 +189,6 @@ class MenuController {
     
     @objc private func openNetworkPreferences(_ sender: NSMenuItem) {
         NSWorkspace.shared.open(AppConstants.URLs.networkPreferences)
-    }
-    
-    private func observeConnections() {
-        if let vpnManager = vpnManager as? VPNManager {
-            vpnManager.$connections
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    self?.updateMenu()
-                }
-                .store(in: &cancellables)
-        } else {
-            updateMenu()
-        }
-
-        if let networkInfoManager = networkInfoManager as? NetworkInfoManager {
-            networkInfoManager.$networkInfo
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    self?.updateMenu()
-                }
-                .store(in: &cancellables)
-        }
     }
     
     // MARK: - Network Info

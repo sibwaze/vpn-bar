@@ -14,7 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         statusBarController = StatusBarController()
-        VPNManager.shared.loadConnections(forceReload: true)
+        // VPNManager.init already loads connections once — avoid a duplicate SC/NE pass.
         registerHotkeyFromSettings()
         registerConnectionHotkeysFromSettings()
 
@@ -73,7 +73,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationWillTerminate(_ notification: Notification) {
         NotificationCenter.default.removeObserver(self)
-        StatisticsManager.shared.recordPendingSession()
         HotkeyManager.shared.cleanup()
         Task { @MainActor in
             VPNManager.shared.cleanup()

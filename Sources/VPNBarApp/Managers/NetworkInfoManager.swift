@@ -12,6 +12,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
 
     private var lastFetchDate: Date?
     private var fetchTask: Task<Void, Never>?
+    private var debounceTask: Task<Void, Never>?
     private var statusObserverToken: NSObjectProtocol?
     private var isFetching = false
 
@@ -36,6 +37,8 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
     func cleanup() {
         fetchTask?.cancel()
         fetchTask = nil
+        debounceTask?.cancel()
+        debounceTask = nil
         isFetching = false
         if let token = statusObserverToken {
             NotificationCenter.default.removeObserver(token)
@@ -50,22 +53,37 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
             queue: .main
         ) { [weak self] notification in
             Task { @MainActor in
-                guard let self = self else { return }
-                if let status = notification.userInfo?["status"] as? SCNetworkConnectionStatus,
-                   status == .disconnected || status == .invalid {
+                guard let self else { return }
+                guard let status = notification.userInfo?["status"] as? SCNetworkConnectionStatus else {
+                    return
+                }
+
+                // Only react to terminal states; coalesce bursts into one delayed refresh.
+                switch status {
+                case .disconnected, .invalid:
                     self.networkInfo = nil
                     self.lastFetchDate = nil
+                    self.scheduleRefresh(force: false)
+                case .connected:
+                    self.scheduleRefresh(force: true)
+                default:
+                    break
                 }
-                try? await Task.sleep(nanoseconds: UInt64(AppConstants.networkInfoRefreshDelay * 1_000_000_000))
-                guard !Task.isCancelled else { return }
-                self.refresh(force: true)
             }
+        }
+    }
+
+    private func scheduleRefresh(force: Bool) {
+        debounceTask?.cancel()
+        debounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(AppConstants.networkInfoRefreshDelay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.refresh(force: force)
         }
     }
 
     private func fetchNetworkInfo() async {
         defer { isFetching = false }
-
         guard !Task.isCancelled else { return }
 
         isFetching = true
@@ -75,7 +93,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
         guard !Task.isCancelled else { return }
 
         if let geo = geoInfo {
-            let info = NetworkInfo(
+            networkInfo = NetworkInfo(
                 publicIP: geo.ip,
                 country: geo.country,
                 countryCode: geo.countryCode,
@@ -83,7 +101,6 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                 vpnInterfaces: vpnInterfaces,
                 lastUpdated: Date()
             )
-            networkInfo = info
             lastFetchDate = Date()
         } else {
             networkInfo = nil
@@ -112,6 +129,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
             var request = URLRequest(url: AppConstants.NetworkInfo.geoIPURL)
             request.timeoutInterval = AppConstants.NetworkInfo.requestTimeout
             request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.cachePolicy = .reloadIgnoringLocalCacheData
 
             let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -120,9 +138,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
             }
 
             let decoded = try JSONDecoder().decode(GeoIPResponse.self, from: data)
-            guard decoded.success == true else {
-                return nil
-            }
+            guard decoded.success == true else { return nil }
 
             let geoInfo = GeoInfo(
                 ip: decoded.ip,
@@ -130,10 +146,10 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                 countryCode: decoded.country_code,
                 city: decoded.city
             )
-            let hasAnyGeoData = geoInfo.ip != nil || geoInfo.country != nil || geoInfo.countryCode != nil || geoInfo.city != nil
-            return hasAnyGeoData ? geoInfo : nil
+            let hasAny = geoInfo.ip != nil || geoInfo.country != nil || geoInfo.countryCode != nil || geoInfo.city != nil
+            return hasAny ? geoInfo : nil
         } catch {
-            Logger.vpn.warning("GeoIP fetch failed: \(error.localizedDescription)")
+            Logger.vpn.warning("GeoIP fetch failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
@@ -171,8 +187,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                         nil, 0,
                         NI_NUMERICHOST
                     ) == 0 {
-                        let address = String(cString: hostname)
-                        interfaces.append(VPNInterface(name: name, address: address))
+                        interfaces.append(VPNInterface(name: name, address: String(cString: hostname)))
                     }
                 }
             }

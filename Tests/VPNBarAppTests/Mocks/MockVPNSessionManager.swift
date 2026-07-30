@@ -19,10 +19,8 @@ actor MockVPNSessionManager: VPNSessionManagerProtocol {
 
     private var sessions: Set<String> = []
     private var cachedStatuses: [String: SCNetworkConnectionStatus] = [:]
-
-    var allConnectionIDs: [String] {
-        Array(sessions)
-    }
+    var pruneSessionsCalled = false
+    var lastPruneKeeping: Set<String> = []
 
     func getOrCreateSession(for uuid: NSUUID) async {
         getOrCreateSessionCalled = true
@@ -63,6 +61,13 @@ actor MockVPNSessionManager: VPNSessionManagerProtocol {
         cachedStatuses[connectionID] ?? .invalid
     }
 
+    func pruneSessions(keeping ids: Set<String>) {
+        pruneSessionsCalled = true
+        lastPruneKeeping = ids
+        sessions = sessions.intersection(ids)
+        cachedStatuses = cachedStatuses.filter { ids.contains($0.key) }
+    }
+
     func cleanup() {
         cleanupCalled = true
         sessions.removeAll()
@@ -74,6 +79,8 @@ actor MockVPNSessionManager: VPNSessionManagerProtocol {
         startConnectionCalled = false
         stopConnectionCalled = false
         cleanupCalled = false
+        pruneSessionsCalled = false
+        lastPruneKeeping = []
         startConnectionIDs = []
         stopConnectionIDs = []
         statusToReturn = .disconnected

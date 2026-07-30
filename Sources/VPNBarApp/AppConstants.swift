@@ -11,14 +11,14 @@ enum AppConstants {
     /// Maximum status update interval in seconds.
     static let maxUpdateInterval: TimeInterval = 120.0
     
-    /// Default status update interval in seconds.
-    static let defaultUpdateInterval: TimeInterval = 15.0
+    /// Default status update interval in seconds (status-only poll).
+    static let defaultUpdateInterval: TimeInterval = 20.0
     
-    /// Session status update interval in seconds.
-    static let sessionStatusUpdateInterval: TimeInterval = 5.0
+    /// Session status update interval in seconds (legacy; status path uses updateInterval).
+    static let sessionStatusUpdateInterval: TimeInterval = 10.0
     
-    /// VPN connections list reload interval in seconds.
-    static let connectionsListReloadInterval: TimeInterval = 30.0
+    /// Full VPN list reload interval in seconds (configs rarely change).
+    static let connectionsListReloadInterval: TimeInterval = 90.0
     
     /// Connection animation interval in seconds.
     static let connectingAnimationInterval: TimeInterval = 0.4

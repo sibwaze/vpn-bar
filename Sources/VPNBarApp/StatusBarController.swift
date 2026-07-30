@@ -113,8 +113,7 @@ class StatusBarController {
         
         let symbolName = symbols[animationFrame % symbols.count]
         
-        if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) {
-            image.isTemplate = true
+        if let image = ImageCache.shared.image(systemSymbolName: symbolName) {
             button.image = image
             button.contentTintColor = nil
         } else {
@@ -169,17 +168,21 @@ class StatusBarController {
         var connectionName: String?
         var targetConnectionID: String?
         
-        // Determine target connection in priority order
-        if let lastUsedID = settingsManager.lastUsedConnectionID,
-           let lastUsedConnection = connections.first(where: { $0.id == lastUsedID }) {
-            targetConnectionID = lastUsedID
-            connectionName = lastUsedConnection.name
-        } else if let activeConnection = connections.first(where: { $0.status.isActive }) {
+        // Prefer the currently active tunnel so left-click never tears down B to start A.
+        if let activeConnection = connections.first(where: { $0.status.isActive }) {
             targetConnectionID = activeConnection.id
             connectionName = activeConnection.name
-        } else if let firstConnection = connections.first {
-            targetConnectionID = firstConnection.id
-            connectionName = firstConnection.name
+        } else if let lastUsedID = settingsManager.lastUsedConnectionID,
+                  let lastUsedConnection = connections.first(where: { $0.id == lastUsedID }) {
+            targetConnectionID = lastUsedID
+            connectionName = lastUsedConnection.name
+        } else if connections.count == 1, let only = connections.first {
+            targetConnectionID = only.id
+            connectionName = only.name
+        } else if connections.count > 1 {
+            // Ambiguous: open menu instead of guessing which VPN to start.
+            MenuController.shared.showMenu(for: statusItem)
+            return
         }
         
         guard let connectionID = targetConnectionID else {

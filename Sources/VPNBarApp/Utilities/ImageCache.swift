@@ -44,9 +44,4 @@ final class ImageCache {
     func cachedImage(forKey key: String) -> NSImage? {
         return cache[key]
     }
-    
-    /// Clears the image cache.
-    func clearCache() {
-        cache.removeAll()
-    }
 }

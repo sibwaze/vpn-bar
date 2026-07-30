@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.4] - 2026-07-30
+
+### Fixed
+- Removed ghost/stale VPN entries after delete: enumerate only services in the **current network set** (same scope as `scutil --nc list`), force-reload on menu open, prune orphaned `ne_session`s, and clear last-used ID / hotkeys for missing configs
+- Cancel in-flight connect/retry tasks on disconnect so a delayed retry cannot reconnect without user intent
+- Prefer currently active VPN for left-click/hotkey toggle (no accidental switch to last-used profile)
+- Race: ignore stale `processLoadedConnections` results that could reintroduce a deleted VPN
+
+### Changed / Performance
+- Prefer SystemConfiguration over `NEConfigurationManager` (skip broken IPC after first failure)
+- Timer path: status-only refresh most ticks; full list reload every 90s (was effectively every 15s)
+- Build menu only when opened (no continuous rebuild on every status publish)
+- Debounce GeoIP fetches; only on connected/disconnected; remove write-only stats flush on quit
+- Strip unnecessary entitlements (JIT, disable-library-validation, location)
+- Safer session create (reentrancy guard) and privacy-redacted logging for connection IDs
+
+---
+
 ## [0.8.3] - 2026-07-30
 
 ### Fixed

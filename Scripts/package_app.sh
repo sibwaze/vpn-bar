@@ -76,19 +76,12 @@ fi
 # Создаем entitlements если нужно
 if [ ! -f "$CONTENTS_DIR/Entitlements.plist" ]; then
     echo -e "${GREEN}Создание Entitlements.plist...${NC}"
+    # Minimal entitlements: this app does not need JIT, library-validation bypass, or location.
     cat > "$CONTENTS_DIR/Entitlements.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.personal-information.location</key>
-    <true/>
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
 </dict>
 </plist>
 EOF
@@ -117,7 +110,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.8.3</string>
+    <string>0.8.4</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleLocalizations</key>

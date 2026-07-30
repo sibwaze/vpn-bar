@@ -30,9 +30,9 @@ protocol VPNSessionManagerProtocol: Actor {
     /// - Parameter connectionID: Connection identifier.
     /// - Returns: Cached connection status.
     func getCachedStatus(for connectionID: String) -> SCNetworkConnectionStatus
-    
-    /// Returns list of all connection identifiers that have sessions.
-    var allConnectionIDs: [String] { get }
+
+    /// Releases sessions whose IDs are not in `ids` (deleted VPN configs).
+    func pruneSessions(keeping ids: Set<String>)
     
     /// Releases all session resources on application termination.
     func cleanup()
