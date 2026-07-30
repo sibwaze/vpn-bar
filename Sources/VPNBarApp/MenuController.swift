@@ -25,28 +25,23 @@ class MenuController {
     /// - Parameter statusItem: Status bar item for which to build the menu.
     func showMenu(for statusItem: NSStatusItem?) {
         self.statusItem = statusItem
+        // Open immediately with current state — never block on network/SC reload.
+        buildMenu()
+        popUpMenu()
+
+        // Refresh list + network info in the background for next open.
         showMenuTask?.cancel()
         showMenuTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            // Await full list reload so deleted VPNs are gone before the menu appears.
             if let manager = self.vpnManager as? VPNManager {
                 await manager.reloadConnectionsAsync()
             } else {
                 self.vpnManager.loadConnections(forceReload: true)
             }
             guard !Task.isCancelled else { return }
-
             if self.vpnManager.hasActiveConnection {
-                // Wait briefly for GeoIP so the menu rarely sticks on "Fetching…".
-                // Uses cache when fresh; falls back after timeout with whatever we have.
-                _ = await self.networkInfoManager.refreshAndWait(
-                    force: false,
-                    timeout: AppConstants.networkInfoMenuWaitTimeout
-                )
+                _ = await self.networkInfoManager.refreshAndWait(force: false, timeout: nil)
             }
-            guard !Task.isCancelled else { return }
-            self.buildMenu()
-            self.popUpMenu()
         }
     }
 
