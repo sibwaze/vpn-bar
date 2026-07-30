@@ -81,10 +81,11 @@ final class MenuControllerTests: XCTestCase {
         )
     }
 
-    func test_buildMenu_withActiveConnectionAndNilNetworkInfo_showsFetchingPlaceholder() {
+    func test_buildMenu_withActiveConnectionAndNilNetworkInfo_showsFetchingWhenLoading() {
         mockVPNManager.hasActiveConnection = true
         let mockNetworkInfoManager = MockNetworkInfoManager()
         mockNetworkInfoManager.networkInfo = nil
+        mockNetworkInfoManager.isLoading = true
         sut = MenuController(vpnManager: mockVPNManager, networkInfoManager: mockNetworkInfoManager)
 
         let menu = NSMenu()
@@ -97,7 +98,28 @@ final class MenuControllerTests: XCTestCase {
         let titles = menu.items.map(\.title)
         XCTAssertTrue(
             titles.contains(fetchingTitle),
-            "Menu should show fetching placeholder when networkInfo is nil"
+            "Menu should show fetching placeholder while loading"
+        )
+    }
+
+    func test_buildMenu_withActiveConnectionAndNilNetworkInfo_showsUnavailableWhenNotLoading() {
+        mockVPNManager.hasActiveConnection = true
+        let mockNetworkInfoManager = MockNetworkInfoManager()
+        mockNetworkInfoManager.networkInfo = nil
+        mockNetworkInfoManager.isLoading = false
+        sut = MenuController(vpnManager: mockVPNManager, networkInfoManager: mockNetworkInfoManager)
+
+        let menu = NSMenu()
+        sut.buildMenu(menu: menu)
+
+        let unavailableTitle = NSLocalizedString(
+            "menu.networkInfo.unavailable",
+            comment: "Shown when network info could not be loaded"
+        )
+        let titles = menu.items.map(\.title)
+        XCTAssertTrue(
+            titles.contains(unavailableTitle),
+            "Menu should show unavailable when load finished without data"
         )
     }
 }

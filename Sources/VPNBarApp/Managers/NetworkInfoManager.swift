@@ -8,30 +8,69 @@ import SystemConfiguration
 final class NetworkInfoManager: NetworkInfoManagerProtocol {
     static let shared = NetworkInfoManager()
 
-    @Published var networkInfo: NetworkInfo?
+    @Published private(set) var networkInfo: NetworkInfo?
+    @Published private(set) var isLoading = false
 
     private var lastFetchDate: Date?
     private var fetchTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private var statusObserverToken: NSObjectProtocol?
-    private var isFetching = false
+
+    /// Dedicated session: short timeout, no shared cookie/cache interference.
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = AppConstants.NetworkInfo.requestTimeout
+        config.timeoutIntervalForResource = AppConstants.NetworkInfo.requestTimeout
+        config.waitsForConnectivity = false
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config)
+    }()
 
     private init() {
         observeVPNStatusChanges()
     }
 
     func refresh(force: Bool = false) {
-        guard !isFetching else { return }
+        Task { @MainActor in
+            await refreshAndWait(force: force)
+        }
+    }
 
-        if !force, let lastFetch = lastFetchDate,
+    /// Fetches network info and waits for completion (or cache hit / timeout).
+    @discardableResult
+    func refreshAndWait(force: Bool = false, timeout: TimeInterval? = nil) async -> NetworkInfo? {
+        if !force,
+           let lastFetch = lastFetchDate,
+           let info = networkInfo,
            Date().timeIntervalSince(lastFetch) < AppConstants.networkInfoCacheDuration {
-            return
+            return info
         }
 
-        fetchTask?.cancel()
-        fetchTask = Task { @MainActor in
-            await fetchNetworkInfo()
+        // Coalesce concurrent callers onto one in-flight fetch.
+        if let fetchTask, isLoading {
+            await fetchTask.value
+            return networkInfo
         }
+
+        let task = Task { @MainActor in
+            await self.fetchNetworkInfo()
+        }
+        fetchTask = task
+
+        if let timeout, timeout > 0 {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await task.value }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                }
+                await group.next()
+                group.cancelAll()
+            }
+        } else {
+            await task.value
+        }
+
+        return networkInfo
     }
 
     func cleanup() {
@@ -39,11 +78,12 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
         fetchTask = nil
         debounceTask?.cancel()
         debounceTask = nil
-        isFetching = false
+        isLoading = false
         if let token = statusObserverToken {
             NotificationCenter.default.removeObserver(token)
             statusObserverToken = nil
         }
+        session.invalidateAndCancel()
     }
 
     private func observeVPNStatusChanges() {
@@ -58,13 +98,24 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                     return
                 }
 
-                // Only react to terminal states; coalesce bursts into one delayed refresh.
                 switch status {
                 case .disconnected, .invalid:
                     self.networkInfo = nil
                     self.lastFetchDate = nil
-                    self.scheduleRefresh(force: false)
+                    self.isLoading = false
                 case .connected:
+                    // Publish local interfaces immediately; then fetch public IP.
+                    let ifaces = self.detectVPNInterfaces()
+                    if self.networkInfo == nil {
+                        self.networkInfo = NetworkInfo(
+                            publicIP: nil,
+                            country: nil,
+                            countryCode: nil,
+                            city: nil,
+                            vpnInterfaces: ifaces,
+                            lastUpdated: Date()
+                        )
+                    }
                     self.scheduleRefresh(force: true)
                 default:
                     break
@@ -78,18 +129,30 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
         debounceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(AppConstants.networkInfoRefreshDelay * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            self?.refresh(force: force)
+            await self?.refreshAndWait(force: force)
         }
     }
 
     private func fetchNetworkInfo() async {
-        defer { isFetching = false }
+        isLoading = true
+        defer { isLoading = false }
+
         guard !Task.isCancelled else { return }
 
-        isFetching = true
         let vpnInterfaces = detectVPNInterfaces()
-        let geoInfo = await fetchGeoIP()
+        // Show interfaces right away so the menu is never empty while geo loads.
+        if networkInfo == nil || networkInfo?.publicIP == nil {
+            networkInfo = NetworkInfo(
+                publicIP: networkInfo?.publicIP,
+                country: networkInfo?.country,
+                countryCode: networkInfo?.countryCode,
+                city: networkInfo?.city,
+                vpnInterfaces: vpnInterfaces,
+                lastUpdated: Date()
+            )
+        }
 
+        let geoInfo = await fetchGeoIPWithFallbacks()
         guard !Task.isCancelled else { return }
 
         if let geo = geoInfo {
@@ -102,20 +165,22 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                 lastUpdated: Date()
             )
             lastFetchDate = Date()
-        } else {
-            networkInfo = nil
+        } else if networkInfo?.publicIP == nil {
+            // Keep interfaces; mark as "attempted" so we don't spin forever as "fetching".
+            networkInfo = NetworkInfo(
+                publicIP: nil,
+                country: nil,
+                countryCode: nil,
+                city: nil,
+                vpnInterfaces: vpnInterfaces,
+                lastUpdated: Date()
+            )
+            // Short negative cache so rapid re-opens don't hammer endpoints.
+            lastFetchDate = Date().addingTimeInterval(-(AppConstants.networkInfoCacheDuration - 5))
         }
     }
 
-    // MARK: - GeoIP
-
-    private struct GeoIPResponse: Decodable {
-        let success: Bool?
-        let country: String?
-        let country_code: String?
-        let city: String?
-        let ip: String?
-    }
+    // MARK: - GeoIP (multi-provider)
 
     private struct GeoInfo {
         let ip: String?
@@ -124,34 +189,104 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
         let city: String?
     }
 
-    private func fetchGeoIP() async -> GeoInfo? {
+    private func fetchGeoIPWithFallbacks() async -> GeoInfo? {
+        // Order: endpoints known to work through restrictive networks first.
+        let providers: [() async -> GeoInfo?] = [
+            { await self.fetchIfconfigCo() },
+            { await self.fetchCloudflareTrace() },
+            { await self.fetchIpwhoIs() }
+        ]
+
+        for provider in providers {
+            if Task.isCancelled { return nil }
+            if let info = await provider(), info.ip != nil || info.country != nil {
+                return info
+            }
+        }
+        Logger.vpn.warning("All GeoIP providers failed")
+        return nil
+    }
+
+    private func data(for url: URL) async -> Data? {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = AppConstants.NetworkInfo.requestTimeout
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
         do {
-            var request = URLRequest(url: AppConstants.NetworkInfo.geoIPURL)
-            request.timeoutInterval = AppConstants.NetworkInfo.requestTimeout
-            request.setValue("application/json", forHTTPHeaderField: "Accept")
-            request.cachePolicy = .reloadIgnoringLocalCacheData
-
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return nil
             }
-
-            let decoded = try JSONDecoder().decode(GeoIPResponse.self, from: data)
-            guard decoded.success == true else { return nil }
-
-            let geoInfo = GeoInfo(
-                ip: decoded.ip,
-                country: decoded.country,
-                countryCode: decoded.country_code,
-                city: decoded.city
-            )
-            let hasAny = geoInfo.ip != nil || geoInfo.country != nil || geoInfo.countryCode != nil || geoInfo.city != nil
-            return hasAny ? geoInfo : nil
+            return data
         } catch {
-            Logger.vpn.warning("GeoIP fetch failed: \(error.localizedDescription, privacy: .public)")
+            Logger.vpn.debug("GeoIP request failed for \(url.host ?? "?"): \(error.localizedDescription, privacy: .public)")
             return nil
         }
+    }
+
+    /// https://ifconfig.co/json — IP + country + city.
+    private func fetchIfconfigCo() async -> GeoInfo? {
+        guard let url = URL(string: "https://ifconfig.co/json"),
+              let data = await data(for: url) else { return nil }
+
+        struct Response: Decodable {
+            let ip: String?
+            let country: String?
+            let country_iso: String?
+            let city: String?
+        }
+        guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else { return nil }
+        let info = GeoInfo(
+            ip: decoded.ip,
+            country: decoded.country,
+            countryCode: decoded.country_iso,
+            city: decoded.city
+        )
+        return (info.ip != nil || info.country != nil) ? info : nil
+    }
+
+    /// Cloudflare trace — IP + country code (no city).
+    private func fetchCloudflareTrace() async -> GeoInfo? {
+        guard let url = URL(string: "https://www.cloudflare.com/cdn-cgi/trace"),
+              let data = await data(for: url),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+
+        var ip: String?
+        var loc: String?
+        for line in text.split(separator: "\n") {
+            if line.hasPrefix("ip=") {
+                ip = String(line.dropFirst(3))
+            } else if line.hasPrefix("loc=") {
+                loc = String(line.dropFirst(4))
+            }
+        }
+        guard ip != nil || loc != nil else { return nil }
+        return GeoInfo(ip: ip, country: loc, countryCode: loc, city: nil)
+    }
+
+    /// Legacy provider (often blocked); kept as last resort.
+    private func fetchIpwhoIs() async -> GeoInfo? {
+        guard let url = AppConstants.NetworkInfo.geoIPURL,
+              let data = await data(for: url) else { return nil }
+
+        struct Response: Decodable {
+            let success: Bool?
+            let country: String?
+            let country_code: String?
+            let city: String?
+            let ip: String?
+        }
+        guard let decoded = try? JSONDecoder().decode(Response.self, from: data),
+              decoded.success == true else { return nil }
+
+        let info = GeoInfo(
+            ip: decoded.ip,
+            country: decoded.country,
+            countryCode: decoded.country_code,
+            city: decoded.city
+        )
+        return (info.ip != nil || info.country != nil) ? info : nil
     }
 
     // MARK: - VPN Interface Detection

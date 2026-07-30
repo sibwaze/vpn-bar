@@ -37,8 +37,14 @@ class MenuController {
             guard !Task.isCancelled else { return }
 
             if self.vpnManager.hasActiveConnection {
-                self.networkInfoManager.refresh(force: false)
+                // Wait briefly for GeoIP so the menu rarely sticks on "Fetching…".
+                // Uses cache when fresh; falls back after timeout with whatever we have.
+                _ = await self.networkInfoManager.refreshAndWait(
+                    force: false,
+                    timeout: AppConstants.networkInfoMenuWaitTimeout
+                )
             }
+            guard !Task.isCancelled else { return }
             self.buildMenu()
             self.popUpMenu()
         }
@@ -204,9 +210,8 @@ class MenuController {
             }
 
             if let ip = info.publicIP {
-                let ipTitle = "IP: \(ip)"
                 let ipItem = NSMenuItem(
-                    title: ipTitle,
+                    title: "IP: \(ip)",
                     action: #selector(copyIPAddress(_:)),
                     keyEquivalent: ""
                 )
@@ -217,6 +222,28 @@ class MenuController {
                     comment: "Tooltip for copying IP address"
                 )
                 menu.addItem(ipItem)
+            } else if networkInfoManager.isLoading {
+                let fetchingItem = NSMenuItem(
+                    title: NSLocalizedString(
+                        "menu.networkInfo.fetching",
+                        comment: "Placeholder while loading network info"
+                    ),
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                fetchingItem.isEnabled = false
+                menu.addItem(fetchingItem)
+            } else {
+                let unavailableItem = NSMenuItem(
+                    title: NSLocalizedString(
+                        "menu.networkInfo.unavailable",
+                        comment: "Shown when network info could not be loaded"
+                    ),
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                unavailableItem.isEnabled = false
+                menu.addItem(unavailableItem)
             }
 
             for iface in info.vpnInterfaces {
@@ -228,7 +255,7 @@ class MenuController {
                 ifaceItem.isEnabled = false
                 menu.addItem(ifaceItem)
             }
-        } else {
+        } else if networkInfoManager.isLoading {
             let fetchingItem = NSMenuItem(
                 title: NSLocalizedString(
                     "menu.networkInfo.fetching",
@@ -239,6 +266,17 @@ class MenuController {
             )
             fetchingItem.isEnabled = false
             menu.addItem(fetchingItem)
+        } else {
+            let unavailableItem = NSMenuItem(
+                title: NSLocalizedString(
+                    "menu.networkInfo.unavailable",
+                    comment: "Shown when network info could not be loaded"
+                ),
+                action: nil,
+                keyEquivalent: ""
+            )
+            unavailableItem.isEnabled = false
+            menu.addItem(unavailableItem)
         }
 
         menu.addItem(NSMenuItem.separator())

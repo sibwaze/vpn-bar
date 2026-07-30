@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.5] - 2026-07-31
+
+### Fixed
+- Network info no longer stuck on “Fetching…”: multi-provider GeoIP (`ifconfig.co`, Cloudflare, `ipwho.is` fallback), short timeout, wait up to 2s before opening the menu, keep local VPN interfaces while public IP loads, show “unavailable” instead of infinite fetching when all providers fail
+
+---
+
 ## [0.8.4] - 2026-07-30
 
 ### Fixed

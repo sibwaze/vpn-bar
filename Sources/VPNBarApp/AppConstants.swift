@@ -36,15 +36,19 @@ enum AppConstants {
     static let notificationDelay: TimeInterval = 0.5
     
     /// Network info cache duration in seconds.
-    static let networkInfoCacheDuration: TimeInterval = 30.0
+    static let networkInfoCacheDuration: TimeInterval = 60.0
 
     /// Delay before refreshing network info after VPN status change in seconds.
-    static let networkInfoRefreshDelay: TimeInterval = 3.0
+    static let networkInfoRefreshDelay: TimeInterval = 1.0
+
+    /// Max time to wait for network info before showing the menu.
+    static let networkInfoMenuWaitTimeout: TimeInterval = 2.0
 
     /// Network info related constants.
     enum NetworkInfo {
-        static let geoIPURL = URL(string: "https://ipwho.is/?fields=success,country,country_code,city,ip")!
-        static let requestTimeout: TimeInterval = 10.0
+        /// Last-resort GeoIP provider (often blocked); primary providers live in NetworkInfoManager.
+        static let geoIPURL = URL(string: "https://ipwho.is/?fields=success,country,country_code,city,ip")
+        static let requestTimeout: TimeInterval = 4.0
     }
 
     /// URLs used in the application.
