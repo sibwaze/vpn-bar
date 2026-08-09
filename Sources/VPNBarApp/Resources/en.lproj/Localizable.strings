@@ -71,7 +71,6 @@
 "menu.networkInfo.fetching" = "Fetching network info…";
 "menu.networkInfo.unavailable" = "Network info unavailable";
 "menu.networkInfo.copyIP" = "Click to copy IP address";
-"menu.networkInfo.openIPLookup" = "Click to open BrowserLeaks IP page";
 
 // MARK: - Errors
 "error.vpn.noConfigurations" = "No VPN configurations found. Configure VPN in System Preferences → Network.";

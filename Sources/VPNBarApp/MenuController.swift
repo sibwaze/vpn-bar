@@ -261,10 +261,6 @@ class MenuController {
             )
             ipItem.target = self
             ipItem.representedObject = ip
-            ipItem.toolTip = NSLocalizedString(
-                "menu.networkInfo.openIPLookup",
-                comment: "Tooltip for opening the IP lookup website"
-            )
             menu.addItem(ipItem)
         } else if shouldShowNetworkInfoFetching {
             // Loading / not finished yet — never flash “unavailable” prematurely.
