@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.12] - 2026-08-10
+
+### Changed
+- Clicking the public IP menu item opens [BrowserLeaks IP](https://browserleaks.com/ip) (the same page used for lookup) instead of copying the address.
+
+---
+
 ## [0.8.11] - 2026-08-10
 
 ### Performance

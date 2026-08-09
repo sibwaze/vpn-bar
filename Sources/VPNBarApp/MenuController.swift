@@ -256,14 +256,14 @@ class MenuController {
         if let ip = info?.publicIP {
             let ipItem = NSMenuItem(
                 title: "IP: \(ip)",
-                action: #selector(copyIPAddress(_:)),
+                action: #selector(openIPLookupPage(_:)),
                 keyEquivalent: ""
             )
             ipItem.target = self
             ipItem.representedObject = ip
             ipItem.toolTip = NSLocalizedString(
-                "menu.networkInfo.copyIP",
-                comment: "Tooltip for copying IP address"
+                "menu.networkInfo.openIPLookup",
+                comment: "Tooltip for opening the IP lookup website"
             )
             menu.addItem(ipItem)
         } else if shouldShowNetworkInfoFetching {
@@ -313,10 +313,8 @@ class MenuController {
         return !networkInfoManager.hasFinishedFetch
     }
 
-    @objc private func copyIPAddress(_ sender: NSMenuItem) {
-        guard let ip = sender.representedObject as? String else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(ip, forType: .string)
+    @objc private func openIPLookupPage(_ sender: NSMenuItem) {
+        NSWorkspace.shared.open(AppConstants.URLs.browserLeaksIP)
     }
 
     // MARK: - Cached Image Helpers

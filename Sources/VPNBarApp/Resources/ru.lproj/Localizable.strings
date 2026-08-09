@@ -71,6 +71,7 @@
 "menu.networkInfo.fetching" = "Получение информации о сети…";
 "menu.networkInfo.unavailable" = "Информация о сети недоступна";
 "menu.networkInfo.copyIP" = "Нажмите, чтобы скопировать IP-адрес";
+"menu.networkInfo.openIPLookup" = "Нажмите, чтобы открыть страницу BrowserLeaks";
 
 // MARK: - Errors
 "error.vpn.noConfigurations" = "VPN-подключения не найдены. Настройте VPN в Системных настройках → Сеть.";

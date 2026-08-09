@@ -342,8 +342,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
 
     /// https://browserleaks.com/ip — server-rendered IP + geo in HTML attributes/table.
     private func fetchBrowserLeaksIP() async -> GeoInfo? {
-        guard let url = URL(string: "https://browserleaks.com/ip"),
-              let data = await data(for: url, accept: "text/html,application/xhtml+xml,*/*"),
+        guard let data = await data(for: AppConstants.URLs.browserLeaksIP, accept: "text/html,application/xhtml+xml,*/*"),
               let html = String(data: data, encoding: .utf8),
               let parsed = BrowserLeaksIPParser.parse(html) else { return nil }
 
