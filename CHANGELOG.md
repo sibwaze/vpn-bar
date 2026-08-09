@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [Unreleased]
+
+### Changed
+- Dropped Chinese (Simplified) localization; app ships with English and Russian only.
+
+---
+
 ## [1.0.0] - 2026-08-10
 
 First stable release of the `sibwaze/vpn-bar` fork.

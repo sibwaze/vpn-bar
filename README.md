@@ -36,7 +36,7 @@ VPN Bar is a native macOS application that lives in the menu bar and provides qu
 - **Convenient Menu** — right-click opens a menu with all available VPN connections
 - **Visual Indicators** — each VPN in the menu displays a status icon (connected/disconnected)
 - **Flexible Settings** — configure refresh interval, notifications, and display options
-- **Multilingual** — supports English, Russian, and Chinese (Simplified)
+- **Multilingual** — supports English and Russian
 - **Lightweight** — minimal system resource usage
 
 ## Installation
