@@ -86,6 +86,7 @@ final class MenuControllerTests: XCTestCase {
         let mockNetworkInfoManager = MockNetworkInfoManager()
         mockNetworkInfoManager.networkInfo = nil
         mockNetworkInfoManager.isLoading = true
+        mockNetworkInfoManager.hasFinishedFetch = false
         sut = MenuController(vpnManager: mockVPNManager, networkInfoManager: mockNetworkInfoManager)
 
         let menu = NSMenu()
@@ -102,11 +103,34 @@ final class MenuControllerTests: XCTestCase {
         )
     }
 
-    func test_buildMenu_withActiveConnectionAndNilNetworkInfo_showsUnavailableWhenNotLoading() {
+    func test_buildMenu_withActiveConnectionAndNilNetworkInfo_showsFetchingBeforeFirstAttempt() {
         mockVPNManager.hasActiveConnection = true
         let mockNetworkInfoManager = MockNetworkInfoManager()
         mockNetworkInfoManager.networkInfo = nil
         mockNetworkInfoManager.isLoading = false
+        mockNetworkInfoManager.hasFinishedFetch = false
+        sut = MenuController(vpnManager: mockVPNManager, networkInfoManager: mockNetworkInfoManager)
+
+        let menu = NSMenu()
+        sut.buildMenu(menu: menu)
+
+        let fetchingTitle = NSLocalizedString(
+            "menu.networkInfo.fetching",
+            comment: "Placeholder while loading network info"
+        )
+        let titles = menu.items.map(\.title)
+        XCTAssertTrue(
+            titles.contains(fetchingTitle),
+            "Menu should show fetching before the first GeoIP attempt finishes"
+        )
+    }
+
+    func test_buildMenu_withActiveConnectionAndNilNetworkInfo_showsUnavailableWhenFetchFinished() {
+        mockVPNManager.hasActiveConnection = true
+        let mockNetworkInfoManager = MockNetworkInfoManager()
+        mockNetworkInfoManager.networkInfo = nil
+        mockNetworkInfoManager.isLoading = false
+        mockNetworkInfoManager.hasFinishedFetch = true
         sut = MenuController(vpnManager: mockVPNManager, networkInfoManager: mockNetworkInfoManager)
 
         let menu = NSMenu()

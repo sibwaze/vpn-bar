@@ -10,6 +10,8 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
 
     @Published private(set) var networkInfo: NetworkInfo?
     @Published private(set) var isLoading = false
+    /// Becomes true when a GeoIP attempt completes (hit or miss). Cleared on disconnect / new connect.
+    private(set) var hasFinishedFetch = false
 
     private var lastFetchDate: Date?
     private var fetchTask: Task<Void, Never>?
@@ -31,6 +33,11 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
     }
 
     func refresh(force: Bool = false) {
+        // Paint “fetching…” immediately — Task scheduling would leave a frame of “unavailable”.
+        if force || networkInfo?.publicIP == nil {
+            isLoading = true
+            hasFinishedFetch = false
+        }
         Task { @MainActor in
             await refreshAndWait(force: force)
         }
@@ -42,7 +49,9 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
         if !force,
            let lastFetch = lastFetchDate,
            let info = networkInfo,
+           info.publicIP != nil,
            Date().timeIntervalSince(lastFetch) < AppConstants.networkInfoCacheDuration {
+            hasFinishedFetch = true
             return info
         }
 
@@ -51,6 +60,10 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
             await fetchTask.value
             return networkInfo
         }
+
+        // Mark loading synchronously so the menu can paint “fetching…” before the first await.
+        isLoading = true
+        hasFinishedFetch = false
 
         let task = Task { @MainActor in
             await self.fetchNetworkInfo()
@@ -79,6 +92,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
         debounceTask?.cancel()
         debounceTask = nil
         isLoading = false
+        hasFinishedFetch = false
         if let token = statusObserverToken {
             NotificationCenter.default.removeObserver(token)
             statusObserverToken = nil
@@ -103,10 +117,12 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                     self.networkInfo = nil
                     self.lastFetchDate = nil
                     self.isLoading = false
+                    self.hasFinishedFetch = false
                 case .connected:
                     // Publish local interfaces immediately; then fetch public IP.
+                    self.hasFinishedFetch = false
                     let ifaces = self.detectVPNInterfaces()
-                    if self.networkInfo == nil {
+                    if self.networkInfo == nil || self.networkInfo?.publicIP == nil {
                         self.networkInfo = NetworkInfo(
                             publicIP: nil,
                             country: nil,
@@ -135,7 +151,10 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
 
     private func fetchNetworkInfo() async {
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            hasFinishedFetch = true
+        }
 
         guard !Task.isCancelled else { return }
 

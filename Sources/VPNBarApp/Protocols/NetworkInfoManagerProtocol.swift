@@ -9,6 +9,10 @@ protocol NetworkInfoManagerProtocol: AnyObject {
     /// Whether a fetch is currently in progress.
     var isLoading: Bool { get }
 
+    /// True after a fetch attempt finished (success or failure). Reset when VPN connects / cache invalidated.
+    /// Menu uses this so we show “fetching…” until the first attempt completes, not “unavailable”.
+    var hasFinishedFetch: Bool { get }
+
     /// Refreshes network information (fire-and-forget).
     /// - Parameter force: If true, ignores cache and fetches fresh data.
     func refresh(force: Bool)

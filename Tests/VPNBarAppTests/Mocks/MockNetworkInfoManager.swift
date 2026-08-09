@@ -5,6 +5,7 @@ import Foundation
 final class MockNetworkInfoManager: NetworkInfoManagerProtocol {
     var networkInfo: NetworkInfo?
     var isLoading = false
+    var hasFinishedFetch = false
     var refreshCalled = false
     var refreshForce = false
     var cleanupCalled = false
@@ -13,12 +14,18 @@ final class MockNetworkInfoManager: NetworkInfoManagerProtocol {
     func refresh(force: Bool) {
         refreshCalled = true
         refreshForce = force
+        if networkInfo?.publicIP == nil {
+            isLoading = true
+            hasFinishedFetch = false
+        }
     }
 
     func refreshAndWait(force: Bool, timeout: TimeInterval?) async -> NetworkInfo? {
         refreshAndWaitCalled = true
         refreshCalled = true
         refreshForce = force
+        isLoading = false
+        hasFinishedFetch = true
         return networkInfo
     }
 
@@ -29,6 +36,7 @@ final class MockNetworkInfoManager: NetworkInfoManagerProtocol {
     func reset() {
         networkInfo = nil
         isLoading = false
+        hasFinishedFetch = false
         refreshCalled = false
         refreshForce = false
         cleanupCalled = false

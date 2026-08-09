@@ -24,11 +24,18 @@ class MenuController {
     /// - Parameter statusItem: Status bar item for which to build the menu.
     func showMenu(for statusItem: NSStatusItem?) {
         self.statusItem = statusItem
-        // Open immediately with current state — never block on network/SC reload.
-        buildMenu()
+
+        // Kick off GeoIP before first paint when we don't have an IP yet, so the
+        // menu shows “fetching…” instead of “unavailable” while the request runs.
+        if vpnManager.hasActiveConnection, networkInfoManager.networkInfo?.publicIP == nil {
+            networkInfoManager.refresh(force: false)
+        }
+
+        // Reuse one NSMenu instance so we can rewrite items while it is open.
+        rebuildOpenMenu()
         popUpMenu()
 
-        // Refresh list + network info in the background for next open.
+        // Refresh list + network info; when IP arrives, update the open menu.
         showMenuTask?.cancel()
         showMenuTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -40,6 +47,8 @@ class MenuController {
             guard !Task.isCancelled else { return }
             if self.vpnManager.hasActiveConnection {
                 _ = await self.networkInfoManager.refreshAndWait(force: false, timeout: nil)
+                guard !Task.isCancelled else { return }
+                self.rebuildOpenMenu()
             }
         }
     }
@@ -58,7 +67,7 @@ class MenuController {
     
     /// Rebuilds menu with current data (only useful while testing or after an action).
     func updateMenu() {
-        buildMenu()
+        rebuildOpenMenu()
     }
     
     /// Creates menu for the specified NSMenu (for testing). Builds directly into the given menu to avoid reusing items across menus.
@@ -67,13 +76,20 @@ class MenuController {
         buildMenu(into: menu)
     }
 
-    private func buildMenu() {
-        let newMenu = NSMenu()
-        if NSApp != nil {
-            newMenu.appearance = NSApp.effectiveAppearance
+    /// Rebuilds into the same `NSMenu` instance so an already-open popup updates in place.
+    private func rebuildOpenMenu() {
+        let target: NSMenu
+        if let menu {
+            target = menu
+            target.removeAllItems()
+        } else {
+            target = NSMenu()
+            if NSApp != nil {
+                target.appearance = NSApp.effectiveAppearance
+            }
+            self.menu = target
         }
-        buildMenu(into: newMenu)
-        self.menu = newMenu
+        buildMenu(into: target)
     }
 
     private func buildMenu(into targetMenu: NSMenu) {
@@ -181,60 +197,29 @@ class MenuController {
     private func addNetworkInfoSection(to menu: NSMenu) {
         guard vpnManager.hasActiveConnection else { return }
 
-        if let info = networkInfoManager.networkInfo {
-            if let location = info.formattedLocation {
-                let locationItem = NSMenuItem(title: location, action: nil, keyEquivalent: "")
-                locationItem.isEnabled = false
-                menu.addItem(locationItem)
-            }
+        let info = networkInfoManager.networkInfo
 
-            if let ip = info.publicIP {
-                let ipItem = NSMenuItem(
-                    title: "IP: \(ip)",
-                    action: #selector(copyIPAddress(_:)),
-                    keyEquivalent: ""
-                )
-                ipItem.target = self
-                ipItem.representedObject = ip
-                ipItem.toolTip = NSLocalizedString(
-                    "menu.networkInfo.copyIP",
-                    comment: "Tooltip for copying IP address"
-                )
-                menu.addItem(ipItem)
-            } else if networkInfoManager.isLoading {
-                let fetchingItem = NSMenuItem(
-                    title: NSLocalizedString(
-                        "menu.networkInfo.fetching",
-                        comment: "Placeholder while loading network info"
-                    ),
-                    action: nil,
-                    keyEquivalent: ""
-                )
-                fetchingItem.isEnabled = false
-                menu.addItem(fetchingItem)
-            } else {
-                let unavailableItem = NSMenuItem(
-                    title: NSLocalizedString(
-                        "menu.networkInfo.unavailable",
-                        comment: "Shown when network info could not be loaded"
-                    ),
-                    action: nil,
-                    keyEquivalent: ""
-                )
-                unavailableItem.isEnabled = false
-                menu.addItem(unavailableItem)
-            }
+        if let location = info?.formattedLocation {
+            let locationItem = NSMenuItem(title: location, action: nil, keyEquivalent: "")
+            locationItem.isEnabled = false
+            menu.addItem(locationItem)
+        }
 
-            for iface in info.vpnInterfaces {
-                let ifaceTitle = NSLocalizedString(
-                    "menu.networkInfo.interface",
-                    comment: "VPN interface label"
-                ) + ": \(iface.name) (\(iface.address))"
-                let ifaceItem = NSMenuItem(title: ifaceTitle, action: nil, keyEquivalent: "")
-                ifaceItem.isEnabled = false
-                menu.addItem(ifaceItem)
-            }
-        } else if networkInfoManager.isLoading {
+        if let ip = info?.publicIP {
+            let ipItem = NSMenuItem(
+                title: "IP: \(ip)",
+                action: #selector(copyIPAddress(_:)),
+                keyEquivalent: ""
+            )
+            ipItem.target = self
+            ipItem.representedObject = ip
+            ipItem.toolTip = NSLocalizedString(
+                "menu.networkInfo.copyIP",
+                comment: "Tooltip for copying IP address"
+            )
+            menu.addItem(ipItem)
+        } else if shouldShowNetworkInfoFetching {
+            // Loading / not finished yet — never flash “unavailable” prematurely.
             let fetchingItem = NSMenuItem(
                 title: NSLocalizedString(
                     "menu.networkInfo.fetching",
@@ -258,7 +243,26 @@ class MenuController {
             menu.addItem(unavailableItem)
         }
 
+        if let interfaces = info?.vpnInterfaces {
+            for iface in interfaces {
+                let ifaceTitle = NSLocalizedString(
+                    "menu.networkInfo.interface",
+                    comment: "VPN interface label"
+                ) + ": \(iface.name) (\(iface.address))"
+                let ifaceItem = NSMenuItem(title: ifaceTitle, action: nil, keyEquivalent: "")
+                ifaceItem.isEnabled = false
+                menu.addItem(ifaceItem)
+            }
+        }
+
         menu.addItem(NSMenuItem.separator())
+    }
+
+    /// Prefer “fetching…” until a GeoIP attempt has actually finished without an IP.
+    private var shouldShowNetworkInfoFetching: Bool {
+        if networkInfoManager.networkInfo?.publicIP != nil { return false }
+        if networkInfoManager.isLoading { return true }
+        return !networkInfoManager.hasFinishedFetch
     }
 
     @objc private func copyIPAddress(_ sender: NSMenuItem) {

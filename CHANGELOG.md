@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.9] - 2026-08-10
+
+### Fixed
+- Network info menu no longer flashes “unavailable” while GeoIP is still loading. Shows “Fetching network info…” until the request finishes, then updates the open menu with the IP.
+
+---
+
 ## [0.8.8] - 2026-08-10
 
 ### Fixed
