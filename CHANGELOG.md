@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.0.0] - 2026-08-10
+
+First stable release of the `sibwaze/vpn-bar` fork.
+
+### Highlights
+- Public IP / geo via [BrowserLeaks](https://browserleaks.com/ip) (works better with split-tunnel VPN routes)
+- Live network-info updates while the menu is open (no close/reopen)
+- Click public IP to open the BrowserLeaks IP page
+- Slimmed menu-bar app, event-driven status, lighter idle footprint
+
+### Changed (since upstream 0.8.2)
+- See 0.8.3–0.8.12 notes below for the full fork changelog.
+
+---
+
 ## [0.8.12] - 2026-08-10
 
 ### Changed
