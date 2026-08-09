@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.8] - 2026-08-10
+
+### Fixed
+- Public IP / geo lookup now uses [BrowserLeaks](https://browserleaks.com/ip) instead of `ifconfig.co` and Cloudflare. Split-tunnel VPN routes often send those “what is my IP” endpoints direct, which showed the ISP address instead of the VPN exit.
+
+---
+
 ## [0.8.7] - 2026-07-31
 
 ### Refactor / slim

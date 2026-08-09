@@ -180,7 +180,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
         }
     }
 
-    // MARK: - GeoIP (multi-provider)
+    // MARK: - GeoIP
 
     private struct GeoInfo {
         let ip: String?
@@ -190,22 +190,25 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
     }
 
     private func fetchGeoIPWithFallbacks() async -> GeoInfo? {
-        // Primary + one fallback (ipwho.is often blocked).
-        if let info = await fetchIfconfigCo(), info.ip != nil || info.country != nil {
+        // Prefer browserleaks.com/ip: many split-tunnel VPN profiles send
+        // ifconfig.co / Cloudflare (and similar "what is my IP" APIs) direct,
+        // which shows the ISP address instead of the VPN exit.
+        if let info = await fetchBrowserLeaksIP(), info.ip != nil || info.country != nil {
             return info
         }
-        if Task.isCancelled { return nil }
-        if let info = await fetchCloudflareTrace(), info.ip != nil || info.country != nil {
-            return info
-        }
-        Logger.vpn.warning("GeoIP providers failed")
+        Logger.vpn.warning("GeoIP provider (browserleaks.com/ip) failed")
         return nil
     }
 
-    private func data(for url: URL) async -> Data? {
+    private func data(for url: URL, accept: String) async -> Data? {
         var request = URLRequest(url: url)
         request.timeoutInterval = AppConstants.NetworkInfo.requestTimeout
-        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue(accept, forHTTPHeaderField: "Accept")
+        // BrowserLeaks serves a normal HTML page; a browser-like UA avoids empty/blocked responses.
+        request.setValue(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+            forHTTPHeaderField: "User-Agent"
+        )
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         do {
@@ -220,44 +223,19 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
         }
     }
 
-    /// https://ifconfig.co/json — IP + country + city.
-    private func fetchIfconfigCo() async -> GeoInfo? {
-        guard let url = URL(string: "https://ifconfig.co/json"),
-              let data = await data(for: url) else { return nil }
+    /// https://browserleaks.com/ip — server-rendered IP + geo in HTML attributes/table.
+    private func fetchBrowserLeaksIP() async -> GeoInfo? {
+        guard let url = URL(string: "https://browserleaks.com/ip"),
+              let data = await data(for: url, accept: "text/html,application/xhtml+xml,*/*"),
+              let html = String(data: data, encoding: .utf8),
+              let parsed = BrowserLeaksIPParser.parse(html) else { return nil }
 
-        struct Response: Decodable {
-            let ip: String?
-            let country: String?
-            let country_iso: String?
-            let city: String?
-        }
-        guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else { return nil }
-        let info = GeoInfo(
-            ip: decoded.ip,
-            country: decoded.country,
-            countryCode: decoded.country_iso,
-            city: decoded.city
+        return GeoInfo(
+            ip: parsed.ip,
+            country: parsed.country,
+            countryCode: parsed.countryCode,
+            city: parsed.city
         )
-        return (info.ip != nil || info.country != nil) ? info : nil
-    }
-
-    /// Cloudflare trace — IP + country code (no city).
-    private func fetchCloudflareTrace() async -> GeoInfo? {
-        guard let url = URL(string: "https://www.cloudflare.com/cdn-cgi/trace"),
-              let data = await data(for: url),
-              let text = String(data: data, encoding: .utf8) else { return nil }
-
-        var ip: String?
-        var loc: String?
-        for line in text.split(separator: "\n") {
-            if line.hasPrefix("ip=") {
-                ip = String(line.dropFirst(3))
-            } else if line.hasPrefix("loc=") {
-                loc = String(line.dropFirst(4))
-            }
-        }
-        guard ip != nil || loc != nil else { return nil }
-        return GeoInfo(ip: ip, country: loc, countryCode: loc, city: nil)
     }
 
     // MARK: - VPN Interface Detection

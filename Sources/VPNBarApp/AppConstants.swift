@@ -12,7 +12,8 @@ enum AppConstants {
     static let networkInfoRefreshDelay: TimeInterval = 1.0
 
     enum NetworkInfo {
-        static let requestTimeout: TimeInterval = 3.5
+        /// BrowserLeaks returns a full HTML page; allow a bit more than pure JSON APIs.
+        static let requestTimeout: TimeInterval = 6.0
     }
 
     enum URLs {
