@@ -5,7 +5,7 @@ let package = Package(
     name: "VPNBarApp",
     defaultLocalization: "en",
     platforms: [
-        .macOS(.v12)
+        .macOS(.v11)
     ],
     products: [
         .executable(

@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Changed
 - Dropped Chinese (Simplified) localization; app ships with English and Russian only.
 - Release builds are **arm64-only** (no universal / x86_64 slice) to keep the app bundle small.
+- Minimum macOS is **11.0 (Big Sur)** — first Apple Silicon release — instead of Monterey 12.
 
 ---
 

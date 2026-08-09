@@ -120,7 +120,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
         <string>ru</string>
     </array>
     <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
+    <string>11.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
