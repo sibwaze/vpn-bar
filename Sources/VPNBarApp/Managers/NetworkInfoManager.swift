@@ -10,11 +10,12 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
 
     @Published private(set) var networkInfo: NetworkInfo?
     @Published private(set) var isLoading = false
-    /// Becomes true when a GeoIP attempt completes (hit or miss). Cleared on disconnect / new connect.
+    /// Becomes true when a GeoIP attempt completes (success or failure). Cleared on disconnect / new connect.
     private(set) var hasFinishedFetch = false
 
     private var lastFetchDate: Date?
-    private var fetchTask: Task<Void, Never>?
+    /// Single in-flight fetch; joined by concurrent callers (never "join" a finished task while isLoading was re-set).
+    private var inFlightFetch: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private var statusObserverToken: NSObjectProtocol?
 
@@ -33,10 +34,9 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
     }
 
     func refresh(force: Bool = false) {
-        // Paint “fetching…” immediately — Task scheduling would leave a frame of “unavailable”.
+        // Show “fetching…” immediately — Task scheduling alone would leave a frame of stale UI.
         if force || networkInfo?.publicIP == nil {
-            isLoading = true
-            hasFinishedFetch = false
+            setLoadingState(true)
         }
         Task { @MainActor in
             await refreshAndWait(force: force)
@@ -51,24 +51,36 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
            let info = networkInfo,
            info.publicIP != nil,
            Date().timeIntervalSince(lastFetch) < AppConstants.networkInfoCacheDuration {
-            hasFinishedFetch = true
+            finishLoading(hasFinished: true)
             return info
         }
 
-        // Coalesce concurrent callers onto one in-flight fetch.
-        if let fetchTask, isLoading {
-            await fetchTask.value
-            return networkInfo
+        // Join a truly in-flight fetch only (not a completed task after isLoading was re-armed).
+        if let inFlightFetch {
+            if let timeout, timeout > 0 {
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask { await inFlightFetch.value }
+                    group.addTask {
+                        try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    }
+                    await group.next()
+                    group.cancelAll()
+                }
+            } else {
+                await inFlightFetch.value
+            }
+            if !force {
+                return networkInfo
+            }
+            // force: previous finished; fall through to a new attempt.
         }
 
-        // Mark loading synchronously so the menu can paint “fetching…” before the first await.
-        isLoading = true
-        hasFinishedFetch = false
+        setLoadingState(true)
 
         let task = Task { @MainActor in
             await self.fetchNetworkInfo()
         }
-        fetchTask = task
+        inFlightFetch = task
 
         if let timeout, timeout > 0 {
             await withTaskGroup(of: Void.self) { group in
@@ -83,21 +95,50 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
             await task.value
         }
 
+        if inFlightFetch == task {
+            inFlightFetch = nil
+        }
+
+        // If the wait timed out but work is still running, keep isLoading true for live UI;
+        // fetchNetworkInfo's defer will clear it and post networkInfoDidChange.
         return networkInfo
     }
 
     func cleanup() {
-        fetchTask?.cancel()
-        fetchTask = nil
+        inFlightFetch?.cancel()
+        inFlightFetch = nil
         debounceTask?.cancel()
         debounceTask = nil
-        isLoading = false
-        hasFinishedFetch = false
+        finishLoading(hasFinished: false)
         if let token = statusObserverToken {
             NotificationCenter.default.removeObserver(token)
             statusObserverToken = nil
         }
         session.invalidateAndCancel()
+    }
+
+    private func setLoadingState(_ loading: Bool) {
+        let changed = isLoading != loading || (loading && hasFinishedFetch)
+        isLoading = loading
+        if loading {
+            hasFinishedFetch = false
+        }
+        if changed {
+            postNetworkInfoDidChange()
+        }
+    }
+
+    private func finishLoading(hasFinished: Bool) {
+        let changed = isLoading || hasFinishedFetch != hasFinished
+        isLoading = false
+        hasFinishedFetch = hasFinished
+        if changed {
+            postNetworkInfoDidChange()
+        }
+    }
+
+    private func postNetworkInfoDidChange() {
+        NotificationCenter.default.post(name: .networkInfoDidChange, object: self)
     }
 
     private func observeVPNStatusChanges() {
@@ -116,10 +157,12 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                 case .disconnected, .invalid:
                     self.networkInfo = nil
                     self.lastFetchDate = nil
-                    self.isLoading = false
-                    self.hasFinishedFetch = false
+                    self.inFlightFetch?.cancel()
+                    self.inFlightFetch = nil
+                    self.finishLoading(hasFinished: false)
+                    self.postNetworkInfoDidChange()
                 case .connected:
-                    // Publish local interfaces immediately; then fetch public IP.
+                    // Publish local interfaces immediately; then fetch public IP once (debounced).
                     self.hasFinishedFetch = false
                     let ifaces = self.detectVPNInterfaces()
                     if self.networkInfo == nil || self.networkInfo?.publicIP == nil {
@@ -132,6 +175,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                             lastUpdated: Date()
                         )
                     }
+                    self.postNetworkInfoDidChange()
                     self.scheduleRefresh(force: true)
                 default:
                     break
@@ -151,9 +195,13 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
 
     private func fetchNetworkInfo() async {
         isLoading = true
+        hasFinishedFetch = false
+        postNetworkInfoDidChange()
+
         defer {
             isLoading = false
             hasFinishedFetch = true
+            postNetworkInfoDidChange()
         }
 
         guard !Task.isCancelled else { return }
@@ -169,6 +217,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                 vpnInterfaces: vpnInterfaces,
                 lastUpdated: Date()
             )
+            postNetworkInfoDidChange()
         }
 
         let geoInfo = await fetchGeoIPWithFallbacks()
@@ -197,6 +246,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
             // Short negative cache so rapid re-opens don't hammer endpoints.
             lastFetchDate = Date().addingTimeInterval(-(AppConstants.networkInfoCacheDuration - 5))
         }
+        // networkInfo change is followed by defer's postNetworkInfoDidChange
     }
 
     // MARK: - GeoIP

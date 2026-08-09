@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.10] - 2026-08-10
+
+### Fixed
+- Open menu now updates live when GeoIP finishes (no need to close/reopen). Updates are event-driven via `networkInfoDidChange` only while the menu is open — no background polling.
+- Stuck “Fetching network info…” caused by joining an already-finished fetch task after re-arming `isLoading`.
+
+---
+
 ## [0.8.9] - 2026-08-10
 
 ### Fixed

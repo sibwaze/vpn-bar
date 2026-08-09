@@ -13,29 +13,32 @@ class MenuController {
 
     private let networkInfoManager: NetworkInfoManagerProtocol
     private var showMenuTask: Task<Void, Never>?
+    /// True only while `popUp` is tracking — live menu rebuilds are gated on this.
+    private var isMenuOpen = false
+    private var networkInfoObserver: NSObjectProtocol?
 
     init(vpnManager: VPNManagerProtocol, networkInfoManager: NetworkInfoManagerProtocol? = nil) {
         self.vpnManager = vpnManager
         self.networkInfoManager = networkInfoManager ?? NetworkInfoManager.shared
-        // Menu is built only when shown — no continuous rebuild on $connections.
+        // Menu is built only when shown — no continuous rebuild / background polling.
     }
 
     /// Shows menu for the specified status bar item.
     /// - Parameter statusItem: Status bar item for which to build the menu.
     func showMenu(for statusItem: NSStatusItem?) {
         self.statusItem = statusItem
+        isMenuOpen = true
 
-        // Kick off GeoIP before first paint when we don't have an IP yet, so the
-        // menu shows “fetching…” instead of “unavailable” while the request runs.
+        // Kick off GeoIP before the modal menu loop so “fetching…” is correct on first paint.
         if vpnManager.hasActiveConnection, networkInfoManager.networkInfo?.publicIP == nil {
             networkInfoManager.refresh(force: false)
         }
 
-        // Reuse one NSMenu instance so we can rewrite items while it is open.
-        rebuildOpenMenu()
-        popUpMenu()
+        // Subscribe BEFORE popUp: notifications fire when the fetch finishes during tracking.
+        // No timers/polling — only event-driven rebuilds while the menu is open.
+        startNetworkInfoObservation()
 
-        // Refresh list + network info; when IP arrives, update the open menu.
+        // Start background work before popUp (which blocks the caller until dismiss).
         showMenuTask?.cancel()
         showMenuTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -47,9 +50,39 @@ class MenuController {
             guard !Task.isCancelled else { return }
             if self.vpnManager.hasActiveConnection {
                 _ = await self.networkInfoManager.refreshAndWait(force: false, timeout: nil)
-                guard !Task.isCancelled else { return }
+            }
+            guard !Task.isCancelled, self.isMenuOpen else { return }
+            self.rebuildOpenMenu()
+        }
+
+        rebuildOpenMenu()
+        popUpMenu()
+
+        // Menu dismissed — stop live updates; leave any in-flight GeoIP alone for cache.
+        isMenuOpen = false
+        stopNetworkInfoObservation()
+        showMenuTask?.cancel()
+        showMenuTask = nil
+    }
+
+    private func startNetworkInfoObservation() {
+        stopNetworkInfoObservation()
+        networkInfoObserver = NotificationCenter.default.addObserver(
+            forName: .networkInfoDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.isMenuOpen else { return }
                 self.rebuildOpenMenu()
             }
+        }
+    }
+
+    private func stopNetworkInfoObservation() {
+        if let networkInfoObserver {
+            NotificationCenter.default.removeObserver(networkInfoObserver)
+            self.networkInfoObserver = nil
         }
     }
 
@@ -64,12 +97,12 @@ class MenuController {
 
         menu?.popUp(positioning: nil, at: screenPoint, in: nil)
     }
-    
+
     /// Rebuilds menu with current data (only useful while testing or after an action).
     func updateMenu() {
         rebuildOpenMenu()
     }
-    
+
     /// Creates menu for the specified NSMenu (for testing). Builds directly into the given menu to avoid reusing items across menus.
     func buildMenu(menu: NSMenu) {
         menu.removeAllItems()
@@ -90,6 +123,8 @@ class MenuController {
             self.menu = target
         }
         buildMenu(into: target)
+        // Force layout refresh while the menu is tracking (otherwise items can look stale).
+        target.update()
     }
 
     private func buildMenu(into targetMenu: NSMenu) {
@@ -174,24 +209,24 @@ class MenuController {
         quitItem.target = self
         targetMenu.addItem(quitItem)
     }
-    
+
     @objc func vpnConnectionToggled(_ sender: NSMenuItem) {
         guard let connectionID = sender.representedObject as? String else { return }
         vpnManager.toggleConnection(connectionID)
     }
-    
+
     @objc private func showSettings(_ sender: NSMenuItem) {
         SettingsWindowController.shared.showWindow()
     }
-    
+
     @objc private func quitApplication(_ sender: NSMenuItem) {
         NSApplication.shared.terminate(nil)
     }
-    
+
     @objc private func openNetworkPreferences(_ sender: NSMenuItem) {
         NSWorkspace.shared.open(AppConstants.URLs.networkPreferences)
     }
-    
+
     // MARK: - Network Info
 
     private func addNetworkInfoSection(to menu: NSMenu) {
@@ -272,7 +307,7 @@ class MenuController {
     }
 
     // MARK: - Cached Image Helpers
-    
+
     private static func activeImage() -> NSImage? {
         symbol("checkmark.circle.fill")
     }
