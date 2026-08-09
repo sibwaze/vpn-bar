@@ -11,6 +11,8 @@ final class StatusBarController {
     private var cancellables = Set<AnyCancellable>()
     private let vpnManager: VPNManager
     private let settingsManager: SettingsManager
+    /// Skip applyIconState when nothing visible changed (status events are frequent during connect).
+    private var lastIconPresentationKey: String?
 
     /// Match default menu-bar SF Symbol scale (avoid oversized glyphs).
     private static let symbolConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
@@ -63,6 +65,20 @@ final class StatusBarController {
         guard let button = statusItem?.button else { return }
         let connections = vpnManager.connections
 
+        let isBusy = connections.contains {
+            $0.status == .connecting || $0.status == .disconnecting
+        }
+        let active = connections.first(where: { $0.status == .connected })
+        let showName = settingsManager.showConnectionName
+        let key = [
+            isBusy ? "b" : "-",
+            active?.id ?? "-",
+            showName ? (active?.name ?? "") : "",
+            vpnManager.hasActiveConnection ? "1" : "0"
+        ].joined(separator: "|")
+        guard key != lastIconPresentationKey else { return }
+        lastIconPresentationKey = key
+
         // Reset presentation so previous state never "sticks".
         button.title = ""
         button.attributedTitle = NSAttributedString(string: "")
@@ -70,9 +86,6 @@ final class StatusBarController {
         button.alphaValue = 1.0
         button.appearsDisabled = false
 
-        let isBusy = connections.contains {
-            $0.status == .connecting || $0.status == .disconnecting
-        }
         if isBusy {
             button.image = Self.templateSymbol("network")
             let tip = NSLocalizedString("status.tooltip.connecting", comment: "")
@@ -83,11 +96,10 @@ final class StatusBarController {
             return
         }
 
-        if let active = connections.first(where: { $0.status == .connected }) {
-            // Prefer shield glyph when available; fall back to network.
+        if let active {
             button.image = Self.templateSymbol("network.badge.shield.half.filled")
                 ?? Self.templateSymbol("network")
-            if settingsManager.showConnectionName {
+            if showName {
                 button.toolTip = active.name
                 button.setAccessibilityValue(String(
                     format: NSLocalizedString("status.tooltip.connectedTo", comment: ""),

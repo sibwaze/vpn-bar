@@ -16,6 +16,8 @@ class MenuController {
     /// True only while `popUp` is tracking — live menu rebuilds are gated on this.
     private var isMenuOpen = false
     private var networkInfoObserver: NSObjectProtocol?
+    /// Coalesce multiple networkInfoDidChange events into one rebuild per run-loop turn.
+    private var menuRebuildScheduled = false
 
     init(vpnManager: VPNManagerProtocol, networkInfoManager: NetworkInfoManagerProtocol? = nil) {
         self.vpnManager = vpnManager
@@ -73,9 +75,20 @@ class MenuController {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.isMenuOpen else { return }
-                self.rebuildOpenMenu()
+                self?.scheduleRebuildOpenMenu()
             }
+        }
+    }
+
+    /// One rebuild per run-loop turn while the menu is open (no timers, no background work).
+    private func scheduleRebuildOpenMenu() {
+        guard isMenuOpen, !menuRebuildScheduled else { return }
+        menuRebuildScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.menuRebuildScheduled = false
+            guard self.isMenuOpen else { return }
+            self.rebuildOpenMenu()
         }
     }
 

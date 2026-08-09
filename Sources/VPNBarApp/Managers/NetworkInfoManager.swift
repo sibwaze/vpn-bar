@@ -18,6 +18,8 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
     private var inFlightFetch: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private var statusObserverToken: NSObjectProtocol?
+    /// Last UI-relevant snapshot we already notified about (avoids notification storms / menu thrash).
+    private var lastPublishedSnapshot: UISnapshot?
 
     /// Dedicated session: short timeout, no shared cookie/cache interference.
     private let session: URLSession = {
@@ -118,27 +120,53 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
     }
 
     private func setLoadingState(_ loading: Bool) {
-        let changed = isLoading != loading || (loading && hasFinishedFetch)
         isLoading = loading
         if loading {
             hasFinishedFetch = false
         }
-        if changed {
-            postNetworkInfoDidChange()
-        }
+        publishIfNeeded()
     }
 
     private func finishLoading(hasFinished: Bool) {
-        let changed = isLoading || hasFinishedFetch != hasFinished
         isLoading = false
         hasFinishedFetch = hasFinished
-        if changed {
-            postNetworkInfoDidChange()
-        }
+        publishIfNeeded()
     }
 
-    private func postNetworkInfoDidChange() {
+    /// Posts `networkInfoDidChange` only when menu-visible fields actually change.
+    private func publishIfNeeded() {
+        let snapshot = UISnapshot(
+            publicIP: networkInfo?.publicIP,
+            country: networkInfo?.country,
+            countryCode: networkInfo?.countryCode,
+            city: networkInfo?.city,
+            interfaceKey: networkInfo?.vpnInterfaces
+                .map { "\($0.name)=\($0.address)" }
+                .sorted()
+                .joined(separator: "|") ?? "",
+            isLoading: isLoading,
+            hasFinishedFetch: hasFinishedFetch
+        )
+        guard snapshot != lastPublishedSnapshot else { return }
+        lastPublishedSnapshot = snapshot
         NotificationCenter.default.post(name: .networkInfoDidChange, object: self)
+    }
+
+    private struct UISnapshot: Equatable {
+        let publicIP: String?
+        let country: String?
+        let countryCode: String?
+        let city: String?
+        let interfaceKey: String
+        let isLoading: Bool
+        let hasFinishedFetch: Bool
+    }
+
+    private var hasFreshCachedIP: Bool {
+        guard let lastFetch = lastFetchDate,
+              let ip = networkInfo?.publicIP,
+              !ip.isEmpty else { return false }
+        return Date().timeIntervalSince(lastFetch) < AppConstants.networkInfoCacheDuration
     }
 
     private func observeVPNStatusChanges() {
@@ -155,14 +183,14 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
 
                 switch status {
                 case .disconnected, .invalid:
-                    self.networkInfo = nil
-                    self.lastFetchDate = nil
-                    self.inFlightFetch?.cancel()
-                    self.inFlightFetch = nil
-                    self.finishLoading(hasFinished: false)
-                    self.postNetworkInfoDidChange()
+                    // Only clear when nothing is active — multi-VPN can disconnect one tunnel while another stays up.
+                    // VPNManager posts per-connection status; if another VPN is still connected, keep geo.
+                    // We cannot see all statuses here cheaply; clear only if public IP would be wrong:
+                    // defer clearing to callers that know hasActiveConnection. Soft approach: clear cache
+                    // only when this event is disconnected and we are not mid-fetch for a new connect.
+                    self.handlePossibleDisconnect()
                 case .connected:
-                    // Publish local interfaces immediately; then fetch public IP once (debounced).
+                    // Publish local interfaces immediately; fetch public IP once if cache is cold.
                     self.hasFinishedFetch = false
                     let ifaces = self.detectVPNInterfaces()
                     if self.networkInfo == nil || self.networkInfo?.publicIP == nil {
@@ -175,12 +203,29 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                             lastUpdated: Date()
                         )
                     }
-                    self.postNetworkInfoDidChange()
-                    self.scheduleRefresh(force: true)
+                    self.publishIfNeeded()
+                    // Cache-aware: no force re-download of BrowserLeaks HTML if we already have a fresh IP.
+                    if !self.hasFreshCachedIP, self.inFlightFetch == nil {
+                        self.scheduleRefresh(force: false)
+                    }
                 default:
                     break
                 }
             }
+        }
+    }
+
+    private func handlePossibleDisconnect() {
+        // Clear geo when interfaces show no VPN tunnels — cheaper than tracking all connection IDs.
+        let ifaces = detectVPNInterfaces()
+        if ifaces.isEmpty {
+            networkInfo = nil
+            lastFetchDate = nil
+            inFlightFetch?.cancel()
+            inFlightFetch = nil
+            finishLoading(hasFinished: false)
+            lastPublishedSnapshot = nil
+            publishIfNeeded()
         }
     }
 
@@ -196,18 +241,18 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
     private func fetchNetworkInfo() async {
         isLoading = true
         hasFinishedFetch = false
-        postNetworkInfoDidChange()
+        publishIfNeeded()
 
         defer {
             isLoading = false
             hasFinishedFetch = true
-            postNetworkInfoDidChange()
+            publishIfNeeded()
         }
 
         guard !Task.isCancelled else { return }
 
         let vpnInterfaces = detectVPNInterfaces()
-        // Show interfaces right away so the menu is never empty while geo loads.
+        // Keep interfaces in model while geo loads (no extra notification if still "fetching" with no IP).
         if networkInfo == nil || networkInfo?.publicIP == nil {
             networkInfo = NetworkInfo(
                 publicIP: networkInfo?.publicIP,
@@ -217,7 +262,10 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
                 vpnInterfaces: vpnInterfaces,
                 lastUpdated: Date()
             )
-            postNetworkInfoDidChange()
+            // Only notify if interface list is meaningful for UI while loading.
+            if !vpnInterfaces.isEmpty {
+                publishIfNeeded()
+            }
         }
 
         let geoInfo = await fetchGeoIPWithFallbacks()
@@ -246,7 +294,7 @@ final class NetworkInfoManager: NetworkInfoManagerProtocol {
             // Short negative cache so rapid re-opens don't hammer endpoints.
             lastFetchDate = Date().addingTimeInterval(-(AppConstants.networkInfoCacheDuration - 5))
         }
-        // networkInfo change is followed by defer's postNetworkInfoDidChange
+        // Final publish via defer.
     }
 
     // MARK: - GeoIP

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.8.11] - 2026-08-10
+
+### Performance
+- Coalesce `networkInfoDidChange` to UI-relevant snapshot changes only (fewer menu rebuilds).
+- Coalesce open-menu rebuilds to one per run-loop turn.
+- Skip status-bar icon reapplication when presentation is unchanged.
+- Skip GeoIP re-fetch on connect when a fresh IP is already cached.
+
+---
+
 ## [0.8.10] - 2026-08-10
 
 ### Fixed
