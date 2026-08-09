@@ -115,7 +115,7 @@ log show --predicate 'processImagePath contains "VPNBar"' --last 5m
 
 #### Requirements
 
-- macOS 11.0 (Big Sur) or later on **Apple Silicon** (arm64). Releases are not universal.
+- macOS 12.0 (Monterey) or later on **Apple Silicon** (arm64). Releases are not universal.
 
 #### App runs but nothing is visible
 
@@ -151,7 +151,7 @@ Open the menu and select "Settings" to access app preferences:
 
 ## System Requirements
 
-- macOS 11.0 (Big Sur) or later (Apple Silicon)
+- macOS 12.0 (Monterey) or later (Apple Silicon)
 - Configured VPN connections in the system
 
 ## Auto-Start

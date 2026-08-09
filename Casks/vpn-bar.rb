@@ -7,7 +7,7 @@ cask "vpn-bar" do
   desc "Menu bar app for managing VPN connections on macOS"
   homepage "https://github.com/borzov/vpn-bar"
 
-  depends_on macos: ">= :big_sur"
+  depends_on macos: ">= :monterey"
 
   # ZIP archive structure: VPNBarApp.zip -> VPNBarApp.app/Contents/...
   # Homebrew Cask expects the app bundle in the root of the archive
