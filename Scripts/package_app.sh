@@ -18,7 +18,8 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 BUILD_DIR="$PROJECT_DIR/.build/release"
-BIN_DIR=$(cd "$PROJECT_DIR" && swift build -c release --arch arm64 --arch x86_64 --show-bin-path 2>/dev/null)
+# Apple Silicon only (no universal / x86_64 slice).
+BIN_DIR=$(cd "$PROJECT_DIR" && swift build -c release --arch arm64 --show-bin-path 2>/dev/null)
 if [ -n "$BIN_DIR" ] && [ -f "$BIN_DIR/$APP_NAME" ]; then
   BUILD_DIR="$BIN_DIR"
 else
@@ -33,10 +34,10 @@ else
   fi
 fi
 
-echo -e "${GREEN}Создание .app bundle для $APP_NAME...${NC}"
+echo -e "${GREEN}Создание .app bundle для $APP_NAME (arm64)...${NC}"
 
 if [ ! -f "$BUILD_DIR/$APP_NAME" ]; then
-    echo -e "${RED}Ошибка: Исполняемый файл не найден. Сначала выполните: swift build -c release${NC}"
+    echo -e "${RED}Ошибка: Исполняемый файл не найден. Сначала выполните: swift build -c release --arch arm64${NC}"
     exit 1
 fi
 

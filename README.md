@@ -115,7 +115,7 @@ log show --predicate 'processImagePath contains "VPNBar"' --last 5m
 
 #### Requirements
 
-- macOS 12.0 (Monterey) or later. On Intel Macs, a universal (x86_64) build is required; recent releases provide it.
+- macOS 12.0 (Monterey) or later on **Apple Silicon** (arm64). Releases are not universal.
 
 #### App runs but nothing is visible
 

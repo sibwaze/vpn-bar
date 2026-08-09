@@ -19,7 +19,8 @@ jobs:
       run: |
         # Используем системный Swift, который уже установлен на macOS runner
         swift --version
-        swift build -c release --arch arm64 --arch x86_64
+        # Apple Silicon only — keep the release binary small (no x86_64 slice).
+        swift build -c release --arch arm64
         
     - name: Create app bundle
       run: |
